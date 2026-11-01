@@ -1103,14 +1103,12 @@ def build_kbv_tex(ocr_dir: Path, out_tex: Path) -> None:
 ]{Noto Sans Kannada Bold}
 \newfontfamily\kbvchapfont[
   Script=Kannada,
-  HyphenChar=None,
-  FakeBold=2.4
-]{Noto Serif Kannada}
+  HyphenChar=None
+]{Noto Sans Kannada Bold}
 \newfontfamily\kbvsecfont[
   Script=Kannada,
-  HyphenChar=None,
-  FakeBold=1.8
-]{Noto Serif Kannada}
+  HyphenChar=None
+]{Noto Sans Kannada Bold}
 
 \setlength{\parindent}{1.6em}
 \setlength{\parskip}{4.5pt plus 6pt minus 1.5pt}
