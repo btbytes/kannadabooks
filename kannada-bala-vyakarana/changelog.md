@@ -9,3 +9,4 @@
 - Reformatted page 116 in `kbv.tex` as the back cover page matching `full/0116.webp` (framed notice box, indented paragraphs, and bottom title/price footer) and exported `backcoverpage.png`.
 - Recreated the front cover page in `kbv.tex` using native TikZ and TeX elements (full-bleed red canvas, horizontal rules, double-ring scalloped cloud badge, outlined Kannada display title, vector peacock publisher logo, and bottom sinusoidal wave ribbons).
 - Changed chapter and section heading fonts in `build_latex.py` from Noto Serif Kannada (fake bold) to Noto Sans Kannada Bold; body text stays Noto Serif Kannada. Regenerated `kbv.tex` and `kbv.pdf`.
+- Fixed OCR typos across all pages `ocr/0001.md`–`ocr/0116.md` using Kannada vocabulary knowledge (ಸ/ಪ, ನ/ವ, ಣ/ನ, ಖು→ಋ, ಹೆ→ಹ confusions, wrong vowel signs, garbled punctuation and sandhi signs, a few OCR noise lines); Markdown structure and tables unchanged. Regenerated `kbv.tex` and `kbv.pdf`.
