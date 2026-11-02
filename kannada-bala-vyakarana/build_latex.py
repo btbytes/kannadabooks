@@ -92,7 +92,9 @@ def escape_latex_preserve_math(text: str) -> str:
         if i % 2 == 1:
             out.append(part)
         else:
-            out.append(part.translate(SPECIAL_LATEX_MAP))
+            part = re.sub(r"[A-Za-z]+", lambda m: "\x00L" + m.group(0) + "\x00E", part)
+            part = part.translate(SPECIAL_LATEX_MAP)
+            out.append(part.replace("\x00L", r"{\kbvlatin ").replace("\x00E", "}"))
     return "".join(out)
 
 
@@ -255,10 +257,11 @@ def convert_markdown_table(table_lines: list[str], file_num: int) -> str:
     # Case 5: Two-column matching lists (e.g. 0008.md ಅ-ಪಟ್ಟಿ / ಬ-ಪಟ್ಟಿ, 0010.md ಕ-ವರ್ಗ, 0045.md ಏಕವಚನ/ಬಹುವಚನ)
     if num_cols == 2:
         has_dots = file_num in (8, 10)
+        zebra = "" if has_dots or len(filtered_rows) < 3 else r"\rowcolors{2}{kbvrow}{white}"
         lines_out = [
             r"\vspace{5pt plus 4pt minus 1pt}",
             r"\begin{center}",
-            r"{\renewcommand{\arraystretch}{1.24}\setlength{\tabcolsep}{10pt}",
+            r"{\renewcommand{\arraystretch}{1.24}\setlength{\tabcolsep}{10pt}" + zebra,
             r"\begin{tabular}{l c l}" if has_dots else r"\begin{tabularx}{0.88\textwidth}{X X}",
         ]
         for r_i, row in enumerate(filtered_rows):
@@ -268,7 +271,8 @@ def convert_markdown_table(table_lines: list[str], file_num: int) -> str:
                 if has_dots:
                     lines_out.append(rf"\textbf{{{c0}}} & \hspace{{12mm}} & \textbf{{{c1}}} \\[3pt]")
                 else:
-                    lines_out.append(rf"\textbf{{{c0}}} & \textbf{{{c1}}} \\[3pt]")
+                    lines_out.append(rf"{{\kbvsecfont\color{{kbvaccentdark}}{c0}}} & {{\kbvsecfont\color{{kbvaccentdark}}{c1}}} \\[1pt]")
+                    lines_out.append(r"\arrayrulecolor{kbvline}\specialrule{0.5pt}{0pt}{2pt}\arrayrulecolor{black}")
             else:
                 if has_dots:
                     lines_out.append(rf"{c0} & \ldots\ldots & {c1} \\")
@@ -289,18 +293,22 @@ def convert_markdown_table(table_lines: list[str], file_num: int) -> str:
         and file_num not in (14, 27, 66, 72, 74, 80, 107)
         and not (file_num == 52 and filtered_rows[0][0].startswith("ತೃ"))
     )
+    zebra = r"\rowcolors{2}{kbvrow}{white}" if real_header and len(filtered_rows) >= 4 else (
+        r"\rowcolors{1}{kbvrow}{white}" if len(filtered_rows) >= 4 else ""
+    )
     lines_out = [
         r"\vspace{5pt plus 4pt minus 1pt}",
-        r"\noindent{\renewcommand{\arraystretch}{1.24}\setlength{\tabcolsep}{4pt}",
+        r"\noindent{\renewcommand{\arraystretch}{1.24}\setlength{\tabcolsep}{4pt}" + zebra,
         rf"\begin{{tabularx}}{{\textwidth}}{{{col_spec}}}",
     ]
     for r_i, row in enumerate(filtered_rows):
         formatted_cells = [format_inline_markdown(c) for c in row]
         if r_i == 0 and real_header:
             formatted_cells = [
-                rf"\textbf{{{c}}}" if c else "" for c in formatted_cells
+                rf"{{\kbvsecfont\color{{kbvaccentdark}}{c}}}" if c else "" for c in formatted_cells
             ]
-            lines_out.append(" & ".join(formatted_cells) + r" \\[2pt]")
+            lines_out.append(" & ".join(formatted_cells) + r" \\[1pt]")
+            lines_out.append(r"\arrayrulecolor{kbvline}\specialrule{0.5pt}{0pt}{2pt}\arrayrulecolor{black}")
         else:
             lines_out.append(" & ".join(formatted_cells) + r" \\")
     lines_out.extend([
@@ -308,6 +316,16 @@ def convert_markdown_table(table_lines: list[str], file_num: int) -> str:
         r"\vspace{5pt plus 4pt minus 1pt}",
     ])
     return "\n".join(lines_out)
+
+
+def running_chapter_name(file_num: int) -> str:
+    """Short chapter name for the running header: latest chapter starting at or before this page."""
+    starts = [k for k in CANONICAL_CHAPTER_TITLES if k <= file_num]
+    if not starts:
+        return ""
+    title = CANONICAL_CHAPTER_TITLES[max(starts)]
+    name = title.split(" : ", 1)[1] if " : " in title else re.sub(r"^[೦-೯0-9]+\.\s*", "", title)
+    return format_inline_markdown(name)
 
 
 def strip_leading_page_number(lines: list[str]) -> list[str]:
@@ -329,6 +347,8 @@ def strip_leading_page_number(lines: list[str]) -> list[str]:
 def clean_ocr_line(line: str, file_num: int) -> str:
     """Clean stray scanner pipe artifacts while preserving poetic dandas on verse pages."""
     s = line.strip()
+    if re.fullmatch(r"[`\"“”'\s]+", s):
+        return ""
     if s.startswith("|") and s.endswith("|") and s.count("|") >= 3:
         return s
 
@@ -360,7 +380,7 @@ def is_chapter_heading(s: str, file_num: int) -> str | None:
 def is_exercise_heading(s: str, file_num: int) -> str | None:
     """Return canonical exercise heading if line is an ಅಭ್ಯಾಸ ಪತ್ರಿಕೆ header."""
     plain = s.lstrip("#").strip().strip("|").strip().strip("*").strip()
-    if re.match(r"^ಅಭ[್ಯಾಣ]+ಸ\s+[ಪಸ]ಂ?[ತ್ರ್ಶ]ರ?ಿಕೆ", plain):
+    if re.match(r"^ಅಭ[್ಯಾಣ]+ಸ\s+[ಪಸ]ಂ?[ತ್ರ್ಶ]+ರ?ಿಕೆ", plain):
         return CANONICAL_EXERCISE_TITLES.get(file_num, plain.rstrip("."))
     return None
 
@@ -415,6 +435,20 @@ def format_equation_or_pair_block(lines: list[str]) -> str:
     """Format consecutive equation/derivation lines (with = or × or semicolon-separated columns)
     using horizontal alignment across the page.
     """
+    return "\\begin{kbvderiv}\n" + _format_equation_or_pair_block_inner(lines) + "\n\\end{kbvderiv}"
+
+
+def _split_result(rhs: str) -> str:
+    """Highlight the derived word; keep trailing notes like (ಲೋಪ ಸಂಧಿ) or [∵ ...] in grey."""
+    if "+" in rhs:
+        return rhs
+    m = re.match(r"^(.*?)(\s*(?:\.{2,}|\(|\[|\{\[\}|\\ldots).*)$", rhs)
+    if m and m.group(1).strip():
+        return rf"\kbvresult{{{m.group(1).strip()}}}{{\color{{kbvgrey}}{m.group(2)}}}"
+    return rf"\kbvresult{{{rhs}}}"
+
+
+def _format_equation_or_pair_block_inner(lines: list[str]) -> str:
     # 1. Semicolon-separated multi-column rows (e.g. ಹಸಿರು + ಎಲೆ ; ಹಣೆ + ಕಣ್ಣು ; ಕೆಂಪು + ತುಟಿ)
     if all(";" in l for l in lines) and len(lines) >= 2:
         split_rows = [[c.strip() for c in l.split(";") if c.strip()] for l in lines]
@@ -429,7 +463,7 @@ def format_equation_or_pair_block(lines: list[str]) -> str:
             for r in split_rows:
                 padded = r + [""] * (max_c - len(r))
                 cells = [format_inline_markdown(c) for c in padded]
-                out.append(" ; & ".join(cells[:-1]) + (" ; & " if max_c > 1 else "") + cells[-1] + r" \\")
+                out.append(" & ".join(cells) + r" \\")
             out.extend([
                 r"\end{tabularx}}",
                 r"\vspace{4pt plus 3pt minus 1pt}",
@@ -440,7 +474,7 @@ def format_equation_or_pair_block(lines: list[str]) -> str:
     if len(lines) >= 2 and all("=" in l and ";" not in l and len(l) < 75 for l in lines):
         out = [
             r"\vspace{4pt plus 3pt minus 1pt}",
-            r"\begin{center}",
+            r"\begin{center}\begin{adjustbox}{max width=\textwidth}",
             r"{\renewcommand{\arraystretch}{1.22}\setlength{\tabcolsep}{4pt}",
             r"\begin{tabular}{l c l}",
         ]
@@ -448,11 +482,11 @@ def format_equation_or_pair_block(lines: list[str]) -> str:
             clean_l = re.sub(r"^[-•]\s*", "", l.strip())
             parts = clean_l.split("=", 1)
             lhs = format_inline_markdown(parts[0].strip())
-            rhs = format_inline_markdown(parts[1].strip())
-            out.append(rf"{lhs} & $=$ & {rhs} \\")
+            rhs = _split_result(format_inline_markdown(parts[1].strip()))
+            out.append(rf"{lhs} & {{\color{{kbvgrey}}$=$}} & {rhs} \\")
         out.extend([
             r"\end{tabular}}",
-            r"\end{center}",
+            r"\end{adjustbox}\end{center}",
             r"\vspace{4pt plus 3pt minus 1pt}",
         ])
         return "\n".join(out)
@@ -461,7 +495,7 @@ def format_equation_or_pair_block(lines: list[str]) -> str:
     if len(lines) >= 2 and all("×" in l and len(l) < 75 for l in lines):
         out = [
             r"\vspace{4pt plus 3pt minus 1pt}",
-            r"\begin{center}",
+            r"\begin{center}\begin{adjustbox}{max width=\textwidth}",
             r"{\renewcommand{\arraystretch}{1.22}\setlength{\tabcolsep}{5pt}",
             r"\begin{tabular}{l c l l}",
         ]
@@ -480,7 +514,7 @@ def format_equation_or_pair_block(lines: list[str]) -> str:
                 )
         out.extend([
             r"\end{tabular}}",
-            r"\end{center}",
+            r"\end{adjustbox}\end{center}",
             r"\vspace{4pt plus 3pt minus 1pt}",
         ])
         return "\n".join(out)
@@ -591,7 +625,7 @@ def render_special_page_5() -> str:
         ("೨೧.", "ಛಂದಸ್ಸು", "97"),
     ]
     rows_tex = "\n".join(
-        rf"    {num} & {title} & \ldots\ldots & {pg} \\"
+        rf"    {{\kbvsecfont\color{{kbvaccent}}{num}}} & {format_inline_markdown(title)} & {{\color{{kbvgrey}}\ldots\ldots}} & {{\kbvsecfont {pg}}} \\"
         for num, title, pg in toc_items
     )
     return rf"""% === File 0005.md: Table of Contents (matching full/0005.webp) ===
@@ -600,7 +634,7 @@ def render_special_page_5() -> str:
   \vspace*{{2mm}}
   \begin{{center}}
     {{\kbvchapfont\fontsize{{18pt}}{{22pt}}\selectfont ವಿಷಯಾನುಕ್ರಮಣಿಕೆ}}\\[3pt]
-    \rule{{48mm}}{{0.9pt}}
+    {{\color{{kbvline}}\rule{{48mm}}{{0.5pt}}}}
   \end{{center}}
   \vspace{{3mm}}
   \noindent\hspace*{{6mm}}{{\kbvsecfont\fontsize{{11pt}}{{14pt}}\selectfont ಪ್ರಕರಣ}}\hfill{{\kbvsecfont\fontsize{{11pt}}{{14pt}}\selectfont ಪುಟ ಸಂಖ್ಯೆ}}\par
@@ -611,7 +645,7 @@ def render_special_page_5() -> str:
   \end{{tabularx}}}}\par
   \vfill
   \begin{{center}}
-    \rule{{28mm}}{{1.0pt}}
+    {{\color{{kbvline}}\rule{{28mm}}{{0.5pt}}}}
   \end{{center}}
   \vspace*{{2mm}}
 }}
@@ -620,49 +654,59 @@ def render_special_page_5() -> str:
 
 
 def render_special_page_105() -> str:
-    """Render 0105.md (Printed Page 103: ಷಟ್ಪದಿಗಳ ಲಕ್ಷಣಗಳು) rotated 90 degrees matching full/0105.webp."""
-    return r"""% === File 0105.md (Printed Page 103: Landscape Shatpadi Table matching full/0105.webp) ===
-\setcounter{page}{103}
-\thispagestyle{kbvpage}
-\begin{center}
-\begin{adjustbox}{max totalheight=0.95\textheight, max width=\textwidth, keepaspectratio}
-\rotatebox{90}{%
-  \begin{minipage}{148mm}
-    \begin{center}
-      {\kbvchapfont\fontsize{15pt}{19pt}\selectfont ಷಟ್ಪದಿಗಳ ಲಕ್ಷಣಗಳು}
-    \end{center}
-    \vspace{2.5mm}
-    {\renewcommand{\arraystretch}{1.35}\setlength{\tabcolsep}{5pt}\fontsize{9.5pt}{12.5pt}\selectfont
-    \begin{tabularx}{\textwidth}{|c|p{22mm}|X|X|p{30mm}|}
-      \hline
-      \textbf{ಕ್ರ.ಸಂ.} & \textbf{ಷಟ್ಪದಿ} & \textbf{೧, ೨, ೪, ೫ ಪಾದಗಳು} & \textbf{೩ ಮತ್ತು ೬ ನೆಯ ಪಾದಗಳು} & \textbf{ವಿಶೇಷ ವಿಚಾರ} \\
-      \hline
-      ೧. & ಶರ ಷಟ್ಪದಿ & ಪ್ರತಿ ಪಾದದಲ್ಲಿ ನಾಲ್ಕು ಮಾತ್ರೆಯ ಎರಡು ಗಣಗಳಿರುವುವು. & ಪ್ರತಿ ಪಾದದಲ್ಲಿ 4 ಮಾತ್ರೆಯ 3 ಗಣಗಳು ಮತ್ತು ಮೇಲೊಂದು ಗುರು ಇರುವುದು. & “$\smile - \smile$” ಈ ರೀತಿಯ ಗಣ ಬರುವುದಿಲ್ಲ. \\
-      \hline
-      ೨. & ಕುಸುಮ ಷಟ್ಪದಿ & ಪ್ರತಿ ಪಾದದಲ್ಲಿ ಐದು ಮಾತ್ರೆಯ ಎರಡು ಗಣಗಳಿರುವುವು. & ಪ್ರತಿ ಪಾದದಲ್ಲಿ 5 ಮಾತ್ರೆಯ 3 ಗಣಗಳು ಮತ್ತು ಮೇಲೊಂದು ಗುರು ಇರುವುದು. & “$\smile - \smile\smile$” ಮತ್ತು “$\smile - -$” ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ. \\
-      \hline
-      ೩. & ಭೋಗ ಷಟ್ಪದಿ & ಪ್ರತಿ ಪಾದದಲ್ಲಿ ಮೂರು ಮಾತ್ರೆಯ ನಾಲ್ಕು ಗಣಗಳಿರುವುವು. & ಪ್ರತಿ ಪಾದದಲ್ಲಿ 3 ಮಾತ್ರೆಯ 6 ಗಣಗಳಿರುವುವು ಮತ್ತು ಮೇಲೊಂದು ಗುರುವಿರುವುದು. & “$\smile -$” ಈ ರೀತಿಯ ಗಣಗಳಿರುವುದಿಲ್ಲ. \\
-      \hline
-      ೪. & ಭಾಮಿನೀ ಷಟ್ಪದಿ & ಪ್ರತಿ ಪಾದದಲ್ಲಿ 3 ಮತ್ತು 4 ಮಾತ್ರೆಯ 4 ಗಣಗಳು ಪರ್ಯಾಯವಾಗಿ ಬರುವುವು. & ಪ್ರತಿ ಪಾದದಲ್ಲಿ 3 ಮತ್ತು 4 ಮಾತ್ರೆಯ 6 ಗಣಗಳು ಪರ್ಯಾಯವಾಗಿ ಬರುವುವು ಮತ್ತು ಮೇಲೊಂದು ಗುರುವಿರುವುದು. & “$\smile - \smile$” ಈ ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ. \\
-      \hline
-      ೫. & ಪರಿವರ್ಧಿನೀ ಷಟ್ಪದಿ & ಪ್ರತಿ ಪಾದದಲ್ಲಿ 4 ಮಾತ್ರೆಯ 4 ಗಣಗಳಿರುವುವು. & ಪ್ರತಿ ಪಾದದಲ್ಲಿ 4 ಮಾತ್ರೆಯ 6 ಗಣಗಳಿರುವುವು ಮತ್ತು ಮೇಲೊಂದು ಗುರುವಿರುವುದು. & “$\smile - \smile$” ಈ ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ. \\
-      \hline
-      ೬. & ವಾರ್ಧಕ ಷಟ್ಪದಿ & ಪ್ರತಿ ಪಾದದಲ್ಲಿ 5 ಮಾತ್ರೆಯ 4 ಗಣಗಳಿರುವುವು. & ಪ್ರತಿ ಪಾದದಲ್ಲಿ 5 ಮಾತ್ರೆಯ 6 ಗಣಗಳು ಮತ್ತು ಮೇಲೊಂದು ಗುರು ಇರುವುದು. & \centering\arraybackslash \ldots\ldots \\
-      \hline
-    \end{tabularx}}
-  \end{minipage}%
-}
-\end{adjustbox}
-\end{center}
-\clearpage
+    """Body for 0105.md (printed page 103): the ಷಟ್ಪದಿಗಳ ಲಕ್ಷಣಗಳು table, upright across the full text width."""
+    rows = [
+        ("೧.", "ಶರ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ ನಾಲ್ಕು ಮಾತ್ರೆಯ ಎರಡು ಗಣಗಳಿರುವುವು.",
+         "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 4 ಮಾತ್ರೆಯ 3 ಗಣಗಳು ಮತ್ತು ಮೇಲೊಂದು ಗುರು ಇರುವುದು.",
+         r"“$\smile - \smile$” ಈ ರೀತಿಯ ಗಣ ಬರುವುದಿಲ್ಲ."),
+        ("೨.", "ಕುಸುಮ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ ಐದು ಮಾತ್ರೆಯ ಎರಡು ಗಣಗಳಿರುವುವು.",
+         "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 5 ಮಾತ್ರೆಯ 3 ಗಣಗಳು ಮತ್ತು ಮೇಲೊಂದು ಗುರು ಇರುವುದು.",
+         r"“$\smile - \smile\smile$” ಮತ್ತು “$\smile - -$” ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ."),
+        ("೩.", "ಭೋಗ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ ಮೂರು ಮಾತ್ರೆಯ ನಾಲ್ಕು ಗಣಗಳಿರುವುವು.",
+         "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 3 ಮಾತ್ರೆಯ 6 ಗಣಗಳಿರುವುವು ಮತ್ತು ಮೇಲೊಂದು ಗುರುವಿರುವುದು.",
+         r"“$\smile -$” ಈ ರೀತಿಯ ಗಣಗಳಿರುವುದಿಲ್ಲ."),
+        ("೪.", "ಭಾಮಿನೀ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 3 ಮತ್ತು 4 ಮಾತ್ರೆಯ 4 ಗಣಗಳು ಪರ್ಯಾಯವಾಗಿ ಬರುವುವು.",
+         "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 3 ಮತ್ತು 4 ಮಾತ್ರೆಯ 6 ಗಣಗಳು ಪರ್ಯಾಯವಾಗಿ ಬರುವುವು ಮತ್ತು ಮೇಲೊಂದು ಗುರುವಿರುವುದು.",
+         r"“$\smile - \smile$” ಈ ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ."),
+        ("೫.", "ಪರಿವರ್ಧಿನೀ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 4 ಮಾತ್ರೆಯ 4 ಗಣಗಳಿರುವುವು.",
+         "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 4 ಮಾತ್ರೆಯ 6 ಗಣಗಳಿರುವುವು ಮತ್ತು ಮೇಲೊಂದು ಗುರುವಿರುವುದು.",
+         r"“$\smile - \smile$” ಈ ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ."),
+        ("೬.", "ವಾರ್ಧಕ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 5 ಮಾತ್ರೆಯ 4 ಗಣಗಳಿರುವುವು.",
+         "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 5 ಮಾತ್ರೆಯ 6 ಗಣಗಳು ಮತ್ತು ಮೇಲೊಂದು ಗುರು ಇರುವುದು.",
+         r"{\color{kbvgrey}\ldots\ldots}"),
+    ]
+    header = [r"{\kbvsecfont ಷಟ್ಪದಿ}", r"{\kbvsecfont ೧, ೨, ೪, ೫ ನೆಯ ಪಾದಗಳು}",
+              r"{\kbvsecfont ೩ ಮತ್ತು ೬ ನೆಯ ಪಾದಗಳು}", r"{\kbvsecfont ವಿಶೇಷ ವಿಚಾರ}"]
+    row_tex = [rf"      {{\kbvsecfont {num}}}\,{name} & {c1} & {c2} & {note}" for num, name, c1, c2, note in rows]
+    body_rows = (r" \\" + "\n" + r"      \specialrule{0.3pt}{2.5pt}{2.5pt}" + "\n").join(row_tex)
+    return (
+        r"""% === File 0105.md (Printed Page 103: ಷಟ್ಪದಿಗಳ ಲಕ್ಷಣಗಳು, full-width upright table) ===
+\par\vspace{6pt plus 4pt}\noindent\begin{minipage}{\textwidth}% keep title and table together
+\begin{center}{\kbvchapfont\fontsize{14pt}{18pt}\selectfont ಷಟ್ಪದಿಗಳ ಲಕ್ಷಣಗಳು}\end{center}
+\vspace{4pt plus 3pt minus 1pt}
+\noindent{\fontsize{8.8pt}{11pt}\selectfont\renewcommand{\arraystretch}{1.05}\setlength{\tabcolsep}{3pt}\arrayrulecolor{kbvline}%
+\setlength{\kbvcolw}{\dimexpr(\textwidth-17mm-21mm-6\tabcolsep)/2\relax}%
+\begin{tabular}{@{} >{\raggedright\arraybackslash}p{17mm} >{\raggedright\arraybackslash}p{\kbvcolw} >{\raggedright\arraybackslash}p{\kbvcolw} >{\raggedright\arraybackslash}p{21mm} @{}}
+      \specialrule{0.5pt}{0pt}{3pt}
+      """ + " & ".join(header) + r""" \\
+      \specialrule{0.5pt}{3pt}{3pt}
+""" + body_rows + r""" \\
+      \specialrule{0.5pt}{3pt}{0pt}
+\end{tabular}\arrayrulecolor{black}}
+\end{minipage}\par\vspace{6pt plus 4pt}
 """
+    )
 
 
 def markdown_page_to_latex(md_text: str, file_num: int) -> str:
+    return "\n\n".join(markdown_page_to_blocks(md_text, file_num))
+
+
+def markdown_page_to_blocks(md_text: str, file_num: int) -> list[str]:
     raw_lines = md_text.splitlines()
     lines = strip_leading_page_number(raw_lines)
     if not lines:
-        return ""
+        return []
 
     i = 0
     n = len(lines)
@@ -701,11 +745,7 @@ def markdown_page_to_latex(md_text: str, file_num: int) -> str:
                     ]
                     if len(inner_rows) == 1 and is_exercise_heading(inner_rows[0], file_num):
                         ex_title = is_exercise_heading(inner_rows[0], file_num)
-                        blocks.append(
-                            r"\vspace{8pt plus 7pt minus 2pt}"
-                            rf"\begin{{center}}{{\kbvsecfont\fontsize{{13.5pt}}{{17pt}}\selectfont {format_inline_markdown(ex_title)}}}\end{{center}}"
-                            r"\vspace{4pt plus 4pt minus 1pt}"
-                        )
+                        blocks.append(rf"\kbvexercise{{{format_inline_markdown(ex_title)}}}")
                     else:
                         blocks.append(format_equation_or_pair_block(inner_rows))
                 else:
@@ -731,35 +771,34 @@ def markdown_page_to_latex(md_text: str, file_num: int) -> str:
         # 3. Chapter Heading (ಪಾಠ ೧ .. ಪಾಠ ೨೧, ೨೨. ದಿನಬಳಕೆಯ ಗಾದೆಗಳು)
         chap_title = is_chapter_heading(cleaned, file_num)
         if chap_title:
-            title_tex = format_inline_markdown(chap_title)
-            blocks.append(
-                r"\vspace{9pt plus 8pt minus 2pt}"
-                rf"\begin{{center}}{{\kbvchapfont\fontsize{{15.5pt}}{{19.5pt}}\selectfont {title_tex}}}\end{{center}}"
-                r"\vspace{5pt plus 5pt minus 1pt}"
-            )
+            if " : " in chap_title:
+                c_num, c_name = chap_title.split(" : ", 1)
+                blocks.append(rf"\kbvchapter{{{format_inline_markdown(c_num)}}}{{{format_inline_markdown(c_name)}}}")
+            else:
+                m_c = re.match(r"^([೦-೯0-9]+)\.\s*(.+)$", chap_title)
+                if m_c:
+                    blocks.append(rf"\kbvchapter{{ಪಾಠ {m_c.group(1)}}}{{{format_inline_markdown(m_c.group(2))}}}")
+                else:
+                    blocks.append(rf"\kbvchapterplain{{{format_inline_markdown(chap_title)}}}")
             i += 1
             continue
 
         # 4. Exercise Heading (ಅಭ್ಯಾಸ ಪತ್ರಿಕೆ ೧ .. ೨೧)
         ex_title = is_exercise_heading(cleaned, file_num)
         if ex_title:
-            title_tex = format_inline_markdown(ex_title)
-            blocks.append(
-                r"\vspace{8pt plus 7pt minus 2pt}"
-                rf"\begin{{center}}{{\kbvsecfont\fontsize{{13.5pt}}{{17pt}}\selectfont {title_tex}}}\end{{center}}"
-                r"\vspace{4pt plus 4pt minus 1pt}"
-            )
+            blocks.append(rf"\kbvexercise{{{format_inline_markdown(ex_title)}}}")
             i += 1
             continue
 
         # 5. Centered Dash Subtitles (e.g. — ಲಿಂಗ —, — ವಚನ —, — ವಿಭಕ್ತಿ ಪ್ರತ್ಯಯಗಳು —)
         if re.match(r"^[—\-]+\s*.+\s*[—\-]+$", cleaned):
-            title_tex = format_inline_markdown(cleaned)
-            blocks.append(
-                r"\vspace{3pt plus 3pt minus 1pt}"
-                rf"\begin{{center}}{{\kbvsecfont\fontsize{{12pt}}{{15.5pt}}\selectfont {title_tex}}}\end{{center}}"
-                r"\vspace{3pt plus 3pt minus 1pt}"
-            )
+            title_tex = format_inline_markdown(cleaned.strip("—- "))
+            if 92 <= file_num <= 111 and blocks and blocks[-1].startswith("\\begin{kbvverse}"):
+                blocks.append(
+                    rf"\noindent\hfill{{\fontsize{{9.5pt}}{{12.5pt}}\selectfont\color{{kbvgrey}}— {title_tex}}}\par\vspace{{3pt plus 2pt}}"
+                )
+            else:
+                blocks.append(rf"\kbvsubtitle{{{title_tex}}}")
             i += 1
             continue
 
@@ -772,15 +811,11 @@ def markdown_page_to_latex(md_text: str, file_num: int) -> str:
             if level <= 2 or h_text in ("ಕನ್ನಡ ಸಂಧಿಗಳು",):
                 blocks.append(
                     r"\vspace{6pt plus 5pt minus 1pt}"
-                    rf"\begin{{center}}{{\kbvsecfont\fontsize{{12.5pt}}{{16pt}}\selectfont {title_tex}}}\end{{center}}"
+                    rf"\begin{{center}}{{\kbvsecfont\fontsize{{12.5pt}}{{16pt}}\selectfont\color{{kbvaccentdark}} {title_tex}}}\end{{center}}"
                     r"\vspace{3pt plus 3pt minus 1pt}"
                 )
             else:
-                blocks.append(
-                    r"\vspace{5pt plus 4pt minus 1pt}"
-                    rf"\noindent{{\kbvsecfont\fontsize{{11.5pt}}{{15pt}}\selectfont {title_tex}}}\par"
-                    r"\vspace{2pt plus 2pt}"
-                )
+                blocks.append(rf"\kbvsechead{{{title_tex}}}")
             i += 1
             continue
 
@@ -789,7 +824,7 @@ def markdown_page_to_latex(md_text: str, file_num: int) -> str:
             title_tex = format_inline_markdown(cleaned)
             blocks.append(
                 r"\vspace{7pt plus 6pt minus 1pt}"
-                rf"\begin{{center}}{{\kbvsecfont\fontsize{{13pt}}{{16.5pt}}\selectfont {title_tex}}}\end{{center}}"
+                rf"\begin{{center}}{{\kbvsecfont\fontsize{{13pt}}{{16.5pt}}\selectfont\color{{kbvaccentdark}} {title_tex}}}\end{{center}}"
                 r"\vspace{3pt plus 3pt minus 1pt}"
             )
             i += 1
@@ -809,12 +844,19 @@ def markdown_page_to_latex(md_text: str, file_num: int) -> str:
             # Re-format cleanly with \hspace{0.55em} between tokens
             clean_chart_rows = []
             for idx_c in range(i - len(chart_lines), i):
-                tokens = [format_inline_markdown(t) for t in clean_ocr_line(lines[idx_c], file_num).split()]
-                clean_chart_rows.append(r"\hspace{0.55em}".join(tokens))
+                raw_tokens = clean_ocr_line(lines[idx_c], file_num).split()
+                is_vowel_row = all(re.match(r"^(ಅಂ|ಅಃ|[ಅ-ಔೠ])$", t) for t in raw_tokens)
+                cells = []
+                for t in raw_tokens:
+                    t_tex = format_inline_markdown(t)
+                    if is_vowel_row:
+                        t_tex = rf"{{\kbvsecfont {t_tex}}}"
+                    cells.append(rf"\makebox[1.7em]{{{t_tex}}}")
+                clean_chart_rows.append("".join(cells))
             blocks.append(
                 r"\vspace{4pt plus 4pt minus 1pt}"
                 r"\begin{center}"
-                r"{\fontsize{11pt}{16.5pt}\selectfont "
+                r"{\fontsize{11pt}{17pt}\selectfont "
                 + " \\\\\n".join(clean_chart_rows)
                 + r"}\end{center}"
                 r"\vspace{4pt plus 4pt minus 1pt}"
@@ -835,7 +877,7 @@ def markdown_page_to_latex(md_text: str, file_num: int) -> str:
         # 10. Right-aligned poetic source attribution (e.g. —ಕರ್ಣಾಟ ಭಾರತ ಕಥಾಮಂಜರಿ : ಉದ್ಯೋಗಪರ್ವ)
         if 92 <= file_num <= 111 and re.match(r"^[—\-]\s*[^—]+$", cleaned) and len(cleaned) < 58:
             blocks.append(
-                rf"\noindent\hfill{{\fontsize{{10pt}}{{13pt}}\selectfont\textbf{{{format_inline_markdown(cleaned)}}}}}\par\vspace{{3pt plus 2pt}}"
+                rf"\noindent\hfill{{\fontsize{{9.5pt}}{{12.5pt}}\selectfont\color{{kbvgrey}}{format_inline_markdown(cleaned)}}}\par\vspace{{3pt plus 2pt}}"
             )
             i += 1
             continue
@@ -942,29 +984,36 @@ def markdown_page_to_latex(md_text: str, file_num: int) -> str:
             h_clean = cleaned.rstrip(";").strip()
             if not h_clean.endswith(":") and h_clean not in ("ಗಣಗಳ ವಿನ್ಯಾಸ", "**ವಿಭಕ್ತಿ ರೂಪಗಳು**"):
                 h_clean += " :"
-            blocks.append(
-                r"\vspace{5pt plus 4pt minus 1pt}"
-                rf"\noindent{{\kbvsecfont\fontsize{{11.5pt}}{{15pt}}\selectfont {format_inline_markdown(h_clean)}}}\par"
-                r"\vspace{2pt plus 2pt}"
-            )
+            if re.match(r"^ಉದಾ", h_clean):
+                blocks.append(r"\vspace{3pt plus 2pt}\noindent\hspace*{1.2em}\kbvlabel{ಉದಾ}\par\vspace{1pt}")
+            else:
+                blocks.append(rf"\kbvsechead{{{format_inline_markdown(h_clean)}}}")
             i += 1
             continue
 
         # 15. Square-bullet rule paragraph (□ ...)
         if cleaned.startswith("□"):
-            rule_text = re.sub(r"^□\.?\s*", "", cleaned)
-            j = i + 1
+            rule_paras: list[str] = []
+            j = i
             while j < n:
-                nxt = clean_ocr_line(lines[j], file_num)
-                if not is_standalone_line(nxt, file_num):
-                    rule_text += " " + nxt
-                    j += 1
-                else:
+                cur = clean_ocr_line(lines[j], file_num)
+                if not cur.startswith("□"):
                     break
-            blocks.append(
-                r"\vspace{3pt plus 3pt minus 1pt}"
-                rf"\noindent\hspace*{{1.5em}}\ensuremath{{\square}}\hspace{{0.65em}}{format_inline_markdown(rule_text)}\par"
-            )
+                rule_text = re.sub(r"^□\.?\s*", "", cur)
+                j += 1
+                while j < n:
+                    nxt = clean_ocr_line(lines[j], file_num)
+                    if nxt and not is_standalone_line(nxt, file_num):
+                        rule_text += " " + nxt
+                        j += 1
+                    else:
+                        break
+                rule_paras.append(format_inline_markdown(rule_text))
+                # skip blank lines between consecutive rules
+                while j < n and not clean_ocr_line(lines[j], file_num):
+                    j += 1
+            body = "\\par\n".join(rf"\noindent\kbvbullet\hspace{{0.5em}}{p}" for p in rule_paras)
+            blocks.append("\\begin{kbvrule}\n" + body + "\n\\end{kbvrule}")
             i = j
             continue
 
@@ -993,29 +1042,40 @@ def markdown_page_to_latex(md_text: str, file_num: int) -> str:
                 if sub_body:
                     blocks.append(
                         r"\vspace{4pt plus 4pt minus 1pt}"
-                        rf"\noindent{{\kbvsecfont\fontsize{{11pt}}{{14.5pt}}\selectfont {marker_tex}\hspace{{0.45em}}{sub_title}}}\hspace{{0.5em}}{sub_body}\par"
+                        rf"\noindent{{\kbvsecfont\fontsize{{11pt}}{{14.5pt}}\selectfont\color{{kbvaccentdark}} {marker_tex}\hspace{{0.45em}}{sub_title}}}\hspace{{0.5em}}{sub_body}\par"
                     )
                 else:
-                    blocks.append(
-                        r"\vspace{5pt plus 4pt minus 1pt}"
-                        rf"\noindent{{\kbvsecfont\fontsize{{11.5pt}}{{15pt}}\selectfont {marker_tex}\hspace{{0.45em}}{sub_title}}}\par"
-                    )
+                    blocks.append(rf"\kbvsechead{{{marker_tex}\hspace{{0.45em}}{sub_title}}}")
             else:
                 marker_tex = format_inline_markdown(marker)
                 rest_tex = format_inline_markdown(rest)
                 blocks.append(
                     r"\vspace{2.5pt plus 3pt minus 0.5pt}"
-                    rf"\noindent\hspace*{{1.2em}}\textbf{{{marker_tex}}}\hspace{{0.55em}}{rest_tex}\par"
+                    rf"\noindent\hspace*{{1.2em}}\kbvnum{{{marker_tex}}}\hspace{{0.55em}}{rest_tex}\par"
                 )
             i = j
             continue
 
         # 17. Proverb lines on pages 110-112 (0112.md..0114.md) or verse lines ending with । / ॥
-        if file_num >= 112 or cleaned.endswith("।") or cleaned.endswith("॥"):
+        if file_num >= 112:
             blocks.append(
-                rf"\noindent\hspace*{{1.5em}}{format_inline_markdown(cleaned)}\par"
+                rf"\noindent\hspace*{{0.6em}}\kbvbullet\hspace{{0.55em}}{format_inline_markdown(cleaned)}\par"
             )
             i += 1
+            continue
+        if cleaned.endswith("।") or cleaned.endswith("॥"):
+            verse_lines = [cleaned]
+            j = i + 1
+            while j < n:
+                nxt = clean_ocr_line(lines[j], file_num)
+                if nxt and (nxt.endswith("।") or nxt.endswith("॥")):
+                    verse_lines.append(nxt)
+                    j += 1
+                else:
+                    break
+            body = " \\\\\n".join(rf"\noindent {format_inline_markdown(v)}" for v in verse_lines)
+            blocks.append("\\begin{kbvverse}\n" + body + "\n\\end{kbvverse}")
+            i = j
             continue
 
         # 18. Regular prose paragraph (with inline bolding for ವ್ಯಾಖ್ಯೆ :, ಸೂತ್ರ :, ಉದಾ :, ವಿ.ಸೂ. :)
@@ -1039,11 +1099,25 @@ def markdown_page_to_latex(md_text: str, file_num: int) -> str:
             full_para,
         )
         if m_label:
-            lbl_tex = format_inline_markdown(m_label.group(1))
+            lbl_raw = m_label.group(1).rstrip(" :;-")
+            lbl_tex = format_inline_markdown(lbl_raw)
             body_tex = format_inline_markdown(m_label.group(2))
-            blocks.append(
-                rf"\noindent\hspace*{{1.2em}}{{\kbvsecfont {lbl_tex}}}\hspace{{0.5em}}{body_tex}\par"
-            )
+            if lbl_raw.startswith("ಉದಾ"):
+                blocks.append(
+                    rf"\noindent\hspace*{{1.2em}}\kbvlabel{{ಉದಾ}}\hspace{{0.6em}}{body_tex}\par"
+                )
+            elif lbl_raw in ("ವ್ಯಾಖ್ಯೆ", "ಸೂತ್ರ"):
+                blocks.append(
+                    "\\begin{kbvrule}\n"
+                    rf"\noindent{{\kbvsecfont {lbl_tex} :}}\hspace{{0.5em}}{body_tex}"
+                    "\n\\end{kbvrule}"
+                )
+            else:
+                blocks.append(
+                    "\\begin{kbvnote}\n"
+                    rf"\noindent{{\kbvsecfont {lbl_tex} :}}\hspace{{0.5em}}{body_tex}"
+                    "\n\\end{kbvnote}"
+                )
         elif len(para_parts) == 1 and len(full_para) < 42 and full_para.endswith((".", "?", "!")):
             # Short standalone example sentence (indented display sentence)
             blocks.append(rf"\noindent\hspace*{{2.2em}}{format_inline_markdown(full_para)}\par")
@@ -1051,27 +1125,13 @@ def markdown_page_to_latex(md_text: str, file_num: int) -> str:
             blocks.append(rf"\indent {format_inline_markdown(full_para)}\par")
         i = j
 
-    return "\n\n".join(blocks)
+    return blocks
 
 
-def build_kbv_tex(ocr_dir: Path, out_tex: Path) -> None:
-    md_files = sorted(ocr_dir.glob("*.md"))
-    if not md_files:
-        raise FileNotFoundError(f"No .md files found in {ocr_dir}")
-
-    tex_parts: list[str] = [
-        r"""\documentclass[10pt]{article}
-\usepackage[
-  paperwidth=5in,
-  paperheight=7in,
-  top=11mm,
-  bottom=10mm,
-  left=11mm,
-  right=11mm,
-  headheight=13pt,
-  headsep=3.5mm
-]{geometry}
-\usepackage{fontspec}
+# ---------------------------------------------------------------------------
+# Shared LaTeX preamble pieces (used by both the page-faithful kbv.tex and kbv-redux.tex)
+# ---------------------------------------------------------------------------
+KBV_PACKAGES_TEX = r"""\usepackage{fontspec}
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{eso-pic}
@@ -1080,84 +1140,128 @@ def build_kbv_tex(ocr_dir: Path, out_tex: Path) -> None:
 \usepackage{adjustbox}
 \usepackage{fancyhdr}
 \usepackage{tikz}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage[skins]{tcolorbox}
 
-\setmainfont[
+% --- Design palette: monochrome interior (the red cover keeps its own colours) ---
+\definecolor{kbvaccent}{HTML}{1A1A1A}
+\definecolor{kbvaccentdark}{HTML}{000000}
+\definecolor{kbvtint}{HTML}{FFFFFF}
+\definecolor{kbvblue}{HTML}{333333}
+\definecolor{kbvbluetint}{HTML}{FFFFFF}
+\definecolor{kbvgrey}{HTML}{6E6E6E}
+\definecolor{kbvrow}{HTML}{FFFFFF}
+\definecolor{kbvline}{HTML}{BDBDBD}
+\newlength{\kbvcolw}
+
+"""
+
+KBV_FONTS_TEX = r"""\setmainfont[
+  Path=fonts/,
+  Extension=.ttf,
+  UprightFont=*-Regular,
+  ItalicFont=*-Italic,
   Script=Kannada,
   HyphenChar=None,
-  AutoFakeBold=1.6
-]{Noto Serif Kannada}
+  AutoFakeBold=1.4
+]{TiroKannada}
 \setsansfont[
   Script=Kannada,
   HyphenChar=None,
   BoldFont={Noto Sans Kannada Bold}
 ]{Noto Sans Kannada}
 \newfontfamily\kbvdisplayfont[
-  Script=Kannada,
-  HyphenChar=None,
-  FakeBold=2.2
-]{Noto Sans Kannada Bold}
-\newfontfamily\kbvcoversans[
-  Script=Kannada,
-  HyphenChar=None,
-  FakeBold=0.6
-]{Noto Sans Kannada Bold}
-\newfontfamily\kbvchapfont[
+  Path=fonts/,
+  Extension=.ttf,
+  UprightFont=*-ExtraBold,
   Script=Kannada,
   HyphenChar=None
-]{Noto Sans Kannada Bold}
+]{BalooTamma2}
+\newfontfamily\kbvcoversans[
+  Path=fonts/,
+  Extension=.ttf,
+  UprightFont=*-SemiBold,
+  Script=Kannada,
+  HyphenChar=None
+]{BalooTamma2}
+\newfontfamily\kbvchapfont[
+  Path=fonts/,
+  Extension=.ttf,
+  UprightFont=*-Bold,
+  Script=Kannada,
+  HyphenChar=None
+]{BalooTamma2}
 \newfontfamily\kbvsecfont[
   Script=Kannada,
   HyphenChar=None
 ]{Noto Sans Kannada Bold}
+% Latin fallback: Noto Sans Kannada carries no Latin letters (used for (i), (ii), U metre marks, names)
+\newfontfamily\kbvlatin[Path=fonts/,Extension=.ttf,UprightFont=*-Regular,ItalicFont=*-Italic]{TiroKannada}
 
-\setlength{\parindent}{1.6em}
-\setlength{\parskip}{4.5pt plus 6pt minus 1.5pt}
-\linespread{1.20}
-\sloppy
-
-\newsavebox{\kbvpagebox}
-\newcommand{\kbvtypesetpage}[1]{%
-  \begin{lrbox}{\kbvpagebox}%
-    \begin{minipage}{\textwidth}%
-      \fontsize{10.4pt}{13.6pt}\selectfont
-      \setlength{\parindent}{1.6em}%
-      \setlength{\parskip}{4.5pt}%
-      #1%
-    \end{minipage}%
-  \end{lrbox}%
-  \ifdim\dimexpr\ht\kbvpagebox+\dp\kbvpagebox\relax>0.965\textheight
-    \noindent\begin{adjustbox}{max totalheight=0.965\textheight, max width=\textwidth, keepaspectratio}%
-      \usebox{\kbvpagebox}%
-    \end{adjustbox}%
-  \else
-    \noindent\vbox to 0.96\textheight{%
-      \fontsize{10.4pt}{13.6pt}\selectfont
-      \setlength{\parindent}{1.6em}%
-      \setlength{\parskip}{5pt plus 8pt minus 1.5pt}%
-      #1%
-      \par\vspace{0pt plus 28pt}%
-    }%
-  \fi
-}
-
-\fancypagestyle{kbvpage}{%
-  \fancyhf{}%
-  \fancyhead[C]{{\kbvsecfont\fontsize{11pt}{13pt}\selectfont\thepage}}%
-  \renewcommand{\headrulewidth}{0pt}%
-  \renewcommand{\footrulewidth}{0pt}%
-}
-
-\begin{document}
 """
-    ]
 
-    for md_path in md_files:
-        file_num = int(md_path.stem)
+KBV_DESIGN_MACROS_TEX = r"""% --- Design macros (clean, monochrome) ---
+% Chapter opener: small grey lesson label, large title, hairline.
+\newcommand{\kbvchapter}[2]{%
+  \vspace{2pt plus 2pt}%
+  \noindent{\kbvsecfont\fontsize{9.5pt}{12pt}\selectfont\color{kbvgrey}#1}\par
+  \vspace{2pt}%
+  \noindent{\kbvchapfont\fontsize{16pt}{20pt}\selectfont #2}\par
+  \vspace{2pt}\noindent{\color{kbvline}\rule{\textwidth}{0.5pt}}\par
+  \vspace{5pt plus 4pt minus 1pt}%
+}
+\newcommand{\kbvchapterplain}[1]{%
+  \vspace{2pt plus 2pt}%
+  \noindent{\kbvchapfont\fontsize{16pt}{20pt}\selectfont #1}\par
+  \vspace{2pt}\noindent{\color{kbvline}\rule{\textwidth}{0.5pt}}\par
+  \vspace{5pt plus 4pt minus 1pt}%
+}
+% Exercise heading: bold sans with a hairline beneath.
+\newcommand{\kbvexercise}[1]{%
+  \vspace{7pt plus 6pt minus 2pt}%
+  \noindent{\kbvsecfont\fontsize{12pt}{15pt}\selectfont #1}\par
+  \vspace{1.5pt}\noindent{\color{kbvline}\rule{\textwidth}{0.4pt}}\par
+  \vspace{3pt plus 3pt minus 1pt}%
+}
+% Centered subtitle between two hairlines:  ——— ಲಿಂಗ ———
+\newcommand{\kbvsubtitle}[1]{%
+  \vspace{4pt plus 3pt minus 1pt}%
+  \noindent{\color{kbvline}\hrulefill}\hspace{0.8em}{\kbvsecfont\fontsize{11.5pt}{14.5pt}\selectfont #1}\hspace{0.8em}{\color{kbvline}\hrulefill}\par
+  \vspace{3pt plus 3pt minus 1pt}%
+}
+% Section head: bold sans, nothing else.
+\newcommand{\kbvsechead}[1]{%
+  \vspace{5pt plus 4pt minus 1pt}%
+  \noindent{\kbvsecfont\fontsize{11.5pt}{15pt}\selectfont #1}\par
+  \vspace{2pt plus 2pt}%
+}
+% Example label, always "ಉದಾ :" in bold sans.
+\newcommand{\kbvlabel}[1]{{\kbvsecfont #1\,:}}
+% Highlighted result word of a derivation.
+\newcommand{\kbvresult}[1]{{\kbvsecfont #1}}
+% Item marker (1), (೧), ೧.
+\newcommand{\kbvnum}[1]{{\kbvsecfont #1}}
+% Proverb / list bullet.
+\newcommand{\kbvbullet}{{\color{kbvgrey}\raisebox{0.25ex}{\scriptsize\ensuremath{\blacksquare}}}}
+% Grammar rule block: white, no frame (the square bullet marks it).
+\newtcolorbox{kbvrule}{enhanced,colback=kbvtint,colframe=kbvtint,boxrule=0pt,arc=0pt,
+  left=7pt,right=7pt,top=5pt,bottom=5pt,boxsep=0pt,before skip=5pt plus 3pt,after skip=5pt plus 3pt}
+% Note / explanation box: hairline frame on white.
+\newtcolorbox{kbvnote}{enhanced,colback=white,colframe=kbvline,boxrule=0.4pt,arc=0pt,
+  left=7pt,right=7pt,top=5pt,bottom=5pt,boxsep=0pt,before skip=5pt plus 3pt,after skip=5pt plus 3pt}
+% Derivation / word-formation block: white, no frame.
+\newtcolorbox{kbvderiv}{enhanced,colback=kbvrow,colframe=kbvrow,boxrule=0pt,arc=0pt,
+  left=5pt,right=5pt,top=3pt,bottom=3pt,boxsep=0pt,before skip=5pt plus 3pt,after skip=5pt plus 3pt}
+% Verse block: indented, no decoration.
+\newtcolorbox{kbvverse}{enhanced,colback=white,colframe=white,boxrule=0pt,arc=0pt,
+  left=12pt,right=4pt,top=2pt,bottom=2pt,boxsep=0pt,before skip=4pt plus 3pt,after skip=4pt plus 3pt}
+"""
 
-        # Page 1: Native TikZ recreation of coverpage.png
-        if file_num == 1:
-            tex_parts.append(
-                r"""% === File 0001.md: Native TikZ Cover Page ===
+
+def render_cover_page() -> str:
+    """Native TikZ recreation of the red front cover."""
+    return r"""% === File 0001.md: Native TikZ Cover Page ===
 \thispagestyle{empty}
 \AddToShipoutPictureBG*{%
   \AtPageLowerLeft{%
@@ -1311,27 +1415,11 @@ def build_kbv_tex(ocr_dir: Path, out_tex: Path) -> None:
 \mbox{}
 \clearpage
 """
-            )
-            continue
 
-        # Pages 3, 4, 5, 105: Custom exact layouts matching full/0003..0005.webp & full/0105.webp
-        if file_num == 3:
-            tex_parts.append(render_special_page_3())
-            continue
-        if file_num == 4:
-            tex_parts.append(render_special_page_4())
-            continue
-        if file_num == 5:
-            tex_parts.append(render_special_page_5())
-            continue
-        if file_num == 105:
-            tex_parts.append(render_special_page_105())
-            continue
 
-        # Page 116: Back cover page matching full/0116.webp layout & style
-        if file_num == 116:
-            tex_parts.append(
-                r"""% === File 0116.md: Back Cover Page ===
+def render_back_cover_page() -> str:
+    """Back cover: framed publisher notice and price."""
+    return r"""% === File 0116.md: Back Cover Page ===
 \thispagestyle{empty}
 \vspace*{2mm}
 \begin{center}
@@ -1367,7 +1455,96 @@ def build_kbv_tex(ocr_dir: Path, out_tex: Path) -> None:
 \end{center}
 \clearpage
 """
-            )
+
+
+def build_kbv_tex(ocr_dir: Path, out_tex: Path) -> None:
+    md_files = sorted(ocr_dir.glob("*.md"))
+    if not md_files:
+        raise FileNotFoundError(f"No .md files found in {ocr_dir}")
+
+    tex_parts: list[str] = [
+        r"""\documentclass[10pt]{article}
+\usepackage[
+  paperwidth=5in,
+  paperheight=7in,
+  top=10mm,
+  bottom=9mm,
+  left=9.5mm,
+  right=9.5mm,
+  headheight=18pt,
+  headsep=3.5mm
+]{geometry}
+"""
+        + KBV_PACKAGES_TEX
+        + KBV_FONTS_TEX
+        + r"""\setlength{\parindent}{1.6em}
+\setlength{\parskip}{4.5pt plus 6pt minus 1.5pt}
+\linespread{1.20}
+\sloppy
+
+\newsavebox{\kbvpagebox}
+\newcommand{\kbvtypesetpage}[1]{%
+  \begin{lrbox}{\kbvpagebox}%
+    \begin{minipage}{\textwidth}%
+      \fontsize{10.0pt}{13.0pt}\selectfont
+      \setlength{\parindent}{1.6em}%
+      \setlength{\parskip}{4.5pt}%
+      #1%
+    \end{minipage}%
+  \end{lrbox}%
+  \ifdim\dimexpr\ht\kbvpagebox+\dp\kbvpagebox\relax>0.965\textheight
+    \message{^^JKBVSCALED page \thepage\space ht=\the\dimexpr\ht\kbvpagebox+\dp\kbvpagebox\relax\space th=\the\textheight^^J}%
+    \noindent\begin{adjustbox}{max totalheight=0.965\textheight, max width=\textwidth, keepaspectratio}%
+      \usebox{\kbvpagebox}%
+    \end{adjustbox}%
+  \else
+    \noindent\vbox to 0.96\textheight{%
+      \fontsize{10.0pt}{13.0pt}\selectfont
+      \setlength{\parindent}{1.6em}%
+      \setlength{\parskip}{3.5pt plus 1.5pt minus 1pt}%
+      #1%
+      \par\vfill
+    }%
+  \fi
+}
+
+% --- Running header: chapter name left, page number in a red tab right ---
+\newcommand{\kbvchaptername}{}
+\fancypagestyle{kbvpage}{%
+  \fancyhf{}%
+  \fancyhead[L]{{\kbvsecfont\fontsize{8pt}{10pt}\selectfont\color{kbvgrey}\kbvchaptername}}%
+  \fancyhead[R]{{\kbvsecfont\fontsize{9.5pt}{11pt}\selectfont\thepage}}%
+  \renewcommand{\headrule}{{\color{kbvline}\hrule width\headwidth height 0.4pt}}%
+  \renewcommand{\footrulewidth}{0pt}%
+}
+
+"""
+        + KBV_DESIGN_MACROS_TEX
+        + "\\begin{document}\n"
+    ]
+
+    for md_path in md_files:
+        file_num = int(md_path.stem)
+
+        # Page 1: Native TikZ recreation of coverpage.png
+        if file_num == 1:
+            tex_parts.append(render_cover_page())
+            continue
+
+        # Pages 3, 4, 5, 105: Custom exact layouts matching full/0003..0005.webp & full/0105.webp
+        if file_num == 3:
+            tex_parts.append(render_special_page_3())
+            continue
+        if file_num == 4:
+            tex_parts.append(render_special_page_4())
+            continue
+        if file_num == 5:
+            tex_parts.append(render_special_page_5())
+            continue
+
+        # Page 116: Back cover page matching full/0116.webp layout & style
+        if file_num == 116:
+            tex_parts.append(render_back_cover_page())
             continue
 
         # Determine original printed page number:
@@ -1393,9 +1570,12 @@ def build_kbv_tex(ocr_dir: Path, out_tex: Path) -> None:
             )
             continue
 
-        body_latex = markdown_page_to_latex(md_text, file_num)
+        body_latex = render_special_page_105() if file_num == 105 else markdown_page_to_latex(md_text, file_num)
         if printed_page is not None:
-            header_setup = f"\\setcounter{{page}}{{{printed_page}}}\n\\thispagestyle{{kbvpage}}"
+            header_setup = (
+                f"\\renewcommand{{\\kbvchaptername}}{{{running_chapter_name(file_num)}}}\n"
+                f"\\setcounter{{page}}{{{printed_page}}}\n\\thispagestyle{{kbvpage}}"
+            )
             page_comment = f"Printed Page {printed_page}"
         else:
             header_setup = "\\thispagestyle{empty}"
@@ -1415,6 +1595,179 @@ def build_kbv_tex(ocr_dir: Path, out_tex: Path) -> None:
     print(f"Wrote {out_tex} from {len(md_files)} OCR markdown files.")
 
 
+
+
+# ---------------------------------------------------------------------------
+# kbv-redux.tex: reflowed edition (no page-for-page constraint), tuned for legibility and print
+# ---------------------------------------------------------------------------
+REDUX_PREAMBLE_HEAD_TEX = r"""\documentclass[11pt,twoside,openany]{article}
+\usepackage[
+  paperwidth=6in,
+  paperheight=9in,
+  inner=21mm,
+  outer=17mm,
+  top=21mm,
+  bottom=22mm,
+  headheight=18pt,
+  headsep=6mm,
+  footskip=9mm
+]{geometry}
+"""
+
+REDUX_LAYOUT_TEX = r"""\usepackage{tocloft}
+
+% Optional crop/trim marks: build with  xelatex "\def\kbvcropmarks{1}\input{kbv-redux.tex}"
+% The 6x9in page is centred on a 7x10in sheet and trim marks are drawn 3mm outside the trim box.
+\ifdefined\kbvcropmarks
+  \geometry{paperwidth=7in,paperheight=10in,layoutwidth=6in,layoutheight=9in,layouthoffset=0.5in,layoutvoffset=0.5in}
+  \AddToShipoutPictureBG{\AtPageLowerLeft{\begin{tikzpicture}[overlay]
+    \foreach \x/\dx in {0.5in/-1, 6.5in/1} {
+      \foreach \y/\dy in {0.5in/-1, 9.5in/1} {
+        \draw[black,line width=0.25pt] ($(\x,\y)+(\dx*3mm,0)$) -- ($(\x,\y)+(\dx*11mm,0)$);
+        \draw[black,line width=0.25pt] ($(\x,\y)+(0,\dy*3mm)$) -- ($(\x,\y)+(0,\dy*11mm)$);
+      }
+    }
+    \node[anchor=west,font=\tiny,text=black!60] at (0.5in,0.2in) {ಕನ್ನಡ ಬಾಲ ವ್ಯಾಕರಣ \textperiodcentered\ trim 6in \texttimes\ 9in};
+  \end{tikzpicture}}}
+\fi
+\usetikzlibrary{calc}
+
+\setlength{\parindent}{1.5em}
+\setlength{\parskip}{3pt plus 1pt minus 0.5pt}
+\linespread{1.30}
+\sloppy
+\raggedbottom
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
+
+% Running heads: outer page tab + book title on even pages, chapter name on odd pages.
+\newcommand{\kbvchaptername}{}
+\newcommand{\kbvpagetab}{{\kbvsecfont\fontsize{9.5pt}{11pt}\selectfont\thepage}}
+\fancypagestyle{kbvredux}{%
+  \fancyhf{}%
+  \fancyhead[LE]{\kbvpagetab\hspace{0.9em}{\kbvsecfont\fontsize{8pt}{10pt}\selectfont\color{kbvgrey}ಕನ್ನಡ ಬಾಲ ವ್ಯಾಕರಣ}}%
+  \fancyhead[RO]{{\kbvsecfont\fontsize{8pt}{10pt}\selectfont\color{kbvgrey}\kbvchaptername}\hspace{0.9em}\kbvpagetab}%
+  \renewcommand{\headrule}{{\color{kbvline}\hrule width\headwidth height 0.4pt}}%
+  \renewcommand{\footrulewidth}{0pt}%
+}
+\fancypagestyle{plain}{\fancyhf{}\renewcommand{\headrule}{}\renewcommand{\headrulewidth}{0pt}}
+\pagestyle{kbvredux}
+
+% Table of contents styling
+\renewcommand{\contentsname}{ವಿಷಯಾನುಕ್ರಮಣಿಕೆ}
+\renewcommand{\cfttoctitlefont}{\kbvchapfont\fontsize{20pt}{24pt}\selectfont\color{kbvaccentdark}}
+\renewcommand{\cftaftertoctitle}{\par\vspace{3pt}{\color{kbvline}\hrule height 0.5pt}\vspace{8pt}}
+\renewcommand{\cftsecfont}{\normalfont}
+\renewcommand{\cftsecpresnum}{\kbvsecfont\color{kbvaccent}}
+\renewcommand{\cftsecpagefont}{\kbvsecfont}
+\renewcommand{\cftsecleader}{{\color{kbvgrey}\cftdotfill{\cftsecdotsep}}}
+\setlength{\cftsecnumwidth}{4.6em}
+\setlength{\cftbeforesecskip}{4pt}
+\setcounter{tocdepth}{1}
+"""
+
+REDUX_OVERRIDES_TEX = r"""
+% Boxes stay unbreakable: tcolorbox's breakable mode leaks a colour under XeTeX and the
+% paragraph after a box is painted invisibly. Short boxes simply move to the next page.
+
+% Chapter opener: always starts a fresh page, feeds the running head and the contents.
+\renewcommand{\kbvchapter}[2]{%
+  \clearpage\thispagestyle{plain}%
+  \renewcommand{\kbvchaptername}{#2}%
+  \addcontentsline{toc}{section}{\protect\numberline{#1}#2}%
+  \vspace*{6mm}%
+  \noindent{\kbvsecfont\fontsize{11pt}{13pt}\selectfont\color{kbvgrey}#1}\par
+  \vspace{4pt}%
+  \noindent{\kbvchapfont\fontsize{21pt}{26pt}\selectfont #2}\par
+  \vspace{4pt}\noindent{\color{kbvline}\rule{\textwidth}{0.5pt}}\par
+  \vspace{9mm}%
+}
+\renewcommand{\kbvchapterplain}[1]{%
+  \clearpage\thispagestyle{plain}%
+  \renewcommand{\kbvchaptername}{#1}%
+  \addcontentsline{toc}{section}{#1}%
+  \vspace*{6mm}%
+  \noindent{\kbvchapfont\fontsize{21pt}{26pt}\selectfont #1}\par
+  \vspace{4pt}\noindent{\color{kbvline}\rule{\textwidth}{0.5pt}}\par
+  \vspace{9mm}%
+}
+"""
+
+_PROSE_RE = re.compile(r"^\\indent (.*)\\par$", re.DOTALL)
+_SENTENCE_END_RE = re.compile(r"[.?!:;।॥”\"\)\]]\s*$")
+
+
+def _merge_cross_page(prev_blocks: list[str], next_blocks: list[str]) -> None:
+    """Join a paragraph that the original printing split across two pages.
+
+    The OCR is page-by-page, so a sentence cut by a page break became two paragraphs.
+    If the previous page ends with a plain paragraph (or list item) that has no sentence-final
+    punctuation and the next page starts with a plain paragraph, glue them back together.
+    """
+    if not prev_blocks or not next_blocks:
+        return
+    last = prev_blocks[-1]
+    first = next_blocks[0]
+    if "\\begin{" in last or not last.endswith("\\par"):
+        return
+    m_first = _PROSE_RE.match(first)
+    if not m_first:
+        return
+    last_text = last[: -len("\\par")]
+    if _SENTENCE_END_RE.search(last_text):
+        return
+    prev_blocks[-1] = last_text.rstrip() + " " + m_first.group(1).strip() + "\\par"
+    next_blocks.pop(0)
+
+
+def build_redux_tex(ocr_dir: Path, out_tex: Path) -> None:
+    md_files = sorted(ocr_dir.glob("*.md"))
+    if not md_files:
+        raise FileNotFoundError(f"No .md files found in {ocr_dir}")
+
+    parts: list[str] = [
+        REDUX_PREAMBLE_HEAD_TEX
+        + KBV_PACKAGES_TEX
+        + KBV_FONTS_TEX
+        + REDUX_LAYOUT_TEX
+        + KBV_DESIGN_MACROS_TEX
+        + REDUX_OVERRIDES_TEX
+        + "\\begin{document}\n",
+        "\\pagenumbering{roman}\n",
+        render_cover_page(),
+        render_special_page_3(),
+        render_special_page_4(),
+        "% === Table of contents (generated) ===\n\\tableofcontents\\thispagestyle{empty}\n\\cleardoublepage\n",
+        "\\pagenumbering{arabic}\n",
+    ]
+
+    body_blocks: list[str] = []
+    for md_path in md_files:
+        file_num = int(md_path.stem)
+        if not 7 <= file_num <= 114:
+            continue  # cover, front matter and back cover are rendered separately
+        md_text = md_path.read_text(encoding="utf-8").strip()
+        if not md_text:
+            continue
+        if file_num == 105:
+            body_blocks.append(render_special_page_105())
+            continue
+        blocks = markdown_page_to_blocks(md_text, file_num)
+        if file_num == 7:
+            blocks = [b for b in blocks if "ಕನ್ನಡ ಬಾಲ ವ್ಯಾಕರಣ}" not in b]  # title already on the title page
+        _merge_cross_page(body_blocks, blocks)
+        body_blocks.append(f"% --- from {md_path.name} ---")
+        body_blocks.extend(blocks)
+
+    parts.append("\n\n".join(body_blocks) + "\n")
+    parts.append("\\cleardoublepage\n" + render_back_cover_page())
+    parts.append("\\end{document}\n")
+    out_tex.write_text("\n".join(parts), encoding="utf-8")
+    print(f"Wrote {out_tex} (reflowed edition) from {len(md_files)} OCR markdown files.")
+
+
 if __name__ == "__main__":
     base = Path(__file__).resolve().parent
     build_kbv_tex(base / "ocr", base / "kbv.tex")
+    build_redux_tex(base / "ocr", base / "kbv-redux.tex")
