@@ -75,6 +75,25 @@ CANONICAL_EXERCISE_TITLES: dict[int, str] = {
 }
 
 
+_CUR_FILE_NUM = 0          # set by markdown_page_to_blocks; prosody marks apply from file 99 (ಛಂದಸ್ಸು) on
+CHANDAS_START_FILE = 99
+_MARK_CORE_RE = re.compile(r"^[UVYyO0∪⌣—–−_-]+$")
+_LAGHU_PH, _GURU_PH = "\x01", "\x02"
+
+
+def _chandas_marks(part: str) -> str:
+    """Replace laghu/guru notation tokens with placeholders (U/∪/⌣ and OCR garble -> laghu, dashes -> guru)."""
+    def conv(tok: str) -> str:
+        m = re.match(r"^([“‘\"'(\[]*)(.*?)([”’\"')\],.;:]*)$", tok)
+        lead, core, trail = m.group(1), m.group(2), m.group(3)
+        if not core or not _MARK_CORE_RE.match(core):
+            return tok
+        # a lone dash token on these pages is a guru mark too (text dashes are attached to words)
+        out = "".join(_GURU_PH if c in "—–−_-" else _LAGHU_PH for c in core)
+        return lead + out + trail
+    return " ".join(conv(t) for t in part.split(" "))
+
+
 def escape_latex_preserve_math(text: str) -> str:
     """Escape LaTeX special characters outside of inline $...$ math expressions."""
     text = text.replace("□", r"\ensuremath{\square}")
@@ -89,12 +108,21 @@ def escape_latex_preserve_math(text: str) -> str:
     parts = token_re.split(text)
     out: list[str] = []
     for i, part in enumerate(parts):
+        chandas = _CUR_FILE_NUM >= CHANDAS_START_FILE
         if i % 2 == 1:
+            if chandas and part.startswith("$"):
+                part = part.replace(r"\cup", r"\mbox{\laghu}").replace(r"\smile", r"\mbox{\laghu}").replace("—", "-").replace("–", "-")
+                part = re.sub(r"(?<![\\a-zA-Z])-", r"\\mbox{\\guru}", part)
             out.append(part)
         else:
+            if chandas:
+                part = _chandas_marks(part)
             part = re.sub(r"[A-Za-z]+", lambda m: "\x00L" + m.group(0) + "\x00E", part)
             part = part.translate(SPECIAL_LATEX_MAP)
-            out.append(part.replace("\x00L", r"{\kbvlatin ").replace("\x00E", "}"))
+            part = part.replace("\x00L", r"{\kbvlatin ").replace("\x00E", "}")
+            if chandas:
+                part = part.replace(_LAGHU_PH, r"\laghu{}").replace(_GURU_PH, r"\guru{}")
+            out.append(part)
     return "".join(out)
 
 
@@ -658,19 +686,19 @@ def render_special_page_105() -> str:
     rows = [
         ("೧.", "ಶರ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ ನಾಲ್ಕು ಮಾತ್ರೆಯ ಎರಡು ಗಣಗಳಿರುವುವು.",
          "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 4 ಮಾತ್ರೆಯ 3 ಗಣಗಳು ಮತ್ತು ಮೇಲೊಂದು ಗುರು ಇರುವುದು.",
-         r"“$\smile - \smile$” ಈ ರೀತಿಯ ಗಣ ಬರುವುದಿಲ್ಲ."),
+         r"“\laghu\,\guru\,\laghu” ಈ ರೀತಿಯ ಗಣ ಬರುವುದಿಲ್ಲ."),
         ("೨.", "ಕುಸುಮ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ ಐದು ಮಾತ್ರೆಯ ಎರಡು ಗಣಗಳಿರುವುವು.",
          "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 5 ಮಾತ್ರೆಯ 3 ಗಣಗಳು ಮತ್ತು ಮೇಲೊಂದು ಗುರು ಇರುವುದು.",
-         r"“$\smile - \smile\smile$” ಮತ್ತು “$\smile - -$” ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ."),
+         r"“\laghu\,\guru\,\laghu\laghu” ಮತ್ತು “\laghu\,\guru\,\guru” ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ."),
         ("೩.", "ಭೋಗ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ ಮೂರು ಮಾತ್ರೆಯ ನಾಲ್ಕು ಗಣಗಳಿರುವುವು.",
          "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 3 ಮಾತ್ರೆಯ 6 ಗಣಗಳಿರುವುವು ಮತ್ತು ಮೇಲೊಂದು ಗುರುವಿರುವುದು.",
-         r"“$\smile -$” ಈ ರೀತಿಯ ಗಣಗಳಿರುವುದಿಲ್ಲ."),
+         r"“\laghu\,\guru” ಈ ರೀತಿಯ ಗಣಗಳಿರುವುದಿಲ್ಲ."),
         ("೪.", "ಭಾಮಿನೀ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 3 ಮತ್ತು 4 ಮಾತ್ರೆಯ 4 ಗಣಗಳು ಪರ್ಯಾಯವಾಗಿ ಬರುವುವು.",
          "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 3 ಮತ್ತು 4 ಮಾತ್ರೆಯ 6 ಗಣಗಳು ಪರ್ಯಾಯವಾಗಿ ಬರುವುವು ಮತ್ತು ಮೇಲೊಂದು ಗುರುವಿರುವುದು.",
-         r"“$\smile - \smile$” ಈ ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ."),
+         r"“\laghu\,\guru\,\laghu” ಈ ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ."),
         ("೫.", "ಪರಿವರ್ಧಿನೀ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 4 ಮಾತ್ರೆಯ 4 ಗಣಗಳಿರುವುವು.",
          "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 4 ಮಾತ್ರೆಯ 6 ಗಣಗಳಿರುವುವು ಮತ್ತು ಮೇಲೊಂದು ಗುರುವಿರುವುದು.",
-         r"“$\smile - \smile$” ಈ ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ."),
+         r"“\laghu\,\guru\,\laghu” ಈ ರೀತಿಯ ಗಣವಿರುವುದಿಲ್ಲ."),
         ("೬.", "ವಾರ್ಧಕ ಷಟ್ಪದಿ", "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 5 ಮಾತ್ರೆಯ 4 ಗಣಗಳಿರುವುವು.",
          "ಪ್ರತಿ ಪಾದದಲ್ಲಿ 5 ಮಾತ್ರೆಯ 6 ಗಣಗಳು ಮತ್ತು ಮೇಲೊಂದು ಗುರು ಇರುವುದು.",
          r"{\color{kbvgrey}\ldots\ldots}"),
@@ -703,6 +731,8 @@ def markdown_page_to_latex(md_text: str, file_num: int) -> str:
 
 
 def markdown_page_to_blocks(md_text: str, file_num: int) -> list[str]:
+    global _CUR_FILE_NUM
+    _CUR_FILE_NUM = file_num
     raw_lines = md_text.splitlines()
     lines = strip_leading_page_number(raw_lines)
     if not lines:
@@ -1236,6 +1266,9 @@ KBV_DESIGN_MACROS_TEX = r"""% --- Design macros (clean, monochrome) ---
   \noindent{\kbvsecfont\fontsize{11.5pt}{15pt}\selectfont #1}\par
   \vspace{2pt plus 2pt}%
 }
+% Prosody marks: laghu = deep U (cup), guru = macron (used from the ಛಂದಸ್ಸು chapter on).
+\newcommand{\laghu}{\scalebox{0.85}{\ensuremath{\cup}}}
+\newcommand{\guru}{\raisebox{0.62ex}{\rule{0.78em}{0.07em}}}
 % Example label, always "ಉದಾ :" in bold sans.
 \newcommand{\kbvlabel}[1]{{\kbvsecfont #1\,:}}
 % Highlighted result word of a derivation.
@@ -1457,10 +1490,18 @@ def render_back_cover_page() -> str:
 """
 
 
-def build_kbv_tex(ocr_dir: Path, out_tex: Path) -> None:
-    md_files = sorted(ocr_dir.glob("*.md"))
-    if not md_files:
-        raise FileNotFoundError(f"No .md files found in {ocr_dir}")
+# Macros whose meaning differs between the two editions (used inside tex/NNNN.tex).
+PAGE_EDITION_MACROS_TEX = r"""
+% --- Edition-specific macros (page-faithful) ---
+\newcommand{\kbvcontinues}{\par}      % paragraph cut by the original page break: end it here
+\newcommand{\kbvcontinued}{\indent}   % ... and start the remainder as a new paragraph
+\newcommand{\kbvbooktitle}{%          % book title repeated on the first text page
+  \vspace{2pt plus 2pt}\begin{center}{\kbvchapfont\fontsize{20pt}{24pt}\selectfont ಕನ್ನಡ ಬಾಲ ವ್ಯಾಕರಣ}\end{center}\vspace{4pt plus 4pt minus 1pt}}
+"""
+
+
+def build_kbv_tex(tex_dir: Path, out_tex: Path) -> None:
+    """Assemble the page-faithful kbv.tex from the per-page files in tex/ (one \\input per page)."""
 
     tex_parts: list[str] = [
         r"""\documentclass[10pt]{article}
@@ -1520,57 +1561,23 @@ def build_kbv_tex(ocr_dir: Path, out_tex: Path) -> None:
 
 """
         + KBV_DESIGN_MACROS_TEX
+        + PAGE_EDITION_MACROS_TEX
         + "\\begin{document}\n"
     ]
 
-    for md_path in md_files:
-        file_num = int(md_path.stem)
+    for file_num in range(1, 117):
+        page_file = tex_dir / f"{file_num:04d}.tex"
+        rel = f"{tex_dir.name}/{page_file.name}"
+        has_page = page_file.exists() and page_file.read_text(encoding="utf-8").strip() != ""
 
-        # Page 1: Native TikZ recreation of coverpage.png
-        if file_num == 1:
-            tex_parts.append(render_cover_page())
+        # Cover, title page, copyright page, contents and back cover carry their own page setup.
+        if file_num in (1, 3, 4, 5, 116):
+            if has_page:
+                tex_parts.append(f"% === {rel} ===\n\\input{{{rel}}}\n")
             continue
 
-        # Pages 3, 4, 5, 105: Custom exact layouts matching full/0003..0005.webp & full/0105.webp
-        if file_num == 3:
-            tex_parts.append(render_special_page_3())
-            continue
-        if file_num == 4:
-            tex_parts.append(render_special_page_4())
-            continue
-        if file_num == 5:
-            tex_parts.append(render_special_page_5())
-            continue
-
-        # Page 116: Back cover page matching full/0116.webp layout & style
-        if file_num == 116:
-            tex_parts.append(render_back_cover_page())
-            continue
-
-        # Determine original printed page number:
-        # Files 0007.md .. 0114.md correspond to printed pages 5 .. 112 (N - 2).
-        if 7 <= file_num <= 114:
-            printed_page = file_num - 2
-        else:
-            printed_page = None
-
-        md_text = md_path.read_text(encoding="utf-8").strip()
-
-        if not md_text:
-            page_cmd = (
-                f"\\setcounter{{page}}{{{printed_page}}}\n\\thispagestyle{{kbvpage}}"
-                if printed_page is not None
-                else "\\thispagestyle{empty}"
-            )
-            tex_parts.append(
-                f"% === File {md_path.name} (Blank Page) ===\n"
-                f"{page_cmd}\n"
-                r"\mbox{}" "\n"
-                r"\clearpage" "\n"
-            )
-            continue
-
-        body_latex = render_special_page_105() if file_num == 105 else markdown_page_to_latex(md_text, file_num)
+        # Files 0007.tex .. 0114.tex correspond to printed pages 5 .. 112 (N - 2).
+        printed_page = file_num - 2 if 7 <= file_num <= 114 else None
         if printed_page is not None:
             header_setup = (
                 f"\\renewcommand{{\\kbvchaptername}}{{{running_chapter_name(file_num)}}}\n"
@@ -1579,20 +1586,24 @@ def build_kbv_tex(ocr_dir: Path, out_tex: Path) -> None:
             page_comment = f"Printed Page {printed_page}"
         else:
             header_setup = "\\thispagestyle{empty}"
-            page_comment = "Unnumbered Front/Back Matter"
+            page_comment = "Unnumbered"
+
+        if not has_page:
+            tex_parts.append(
+                f"% === {rel} (Blank Page) ===\n{header_setup}\n\\mbox{{}}\n\\clearpage\n"
+            )
+            continue
 
         tex_parts.append(
-            f"% === File {md_path.name} ({page_comment}) ===\n"
+            f"% === {rel} ({page_comment}) ===\n"
             f"{header_setup}\n"
-            r"\kbvtypesetpage{%" "\n"
-            f"{body_latex}\n"
-            r"}" "\n"
-            r"\clearpage" "\n"
+            f"\\kbvtypesetpage{{\\input{{{rel}}}}}\n"
+            "\\clearpage\n"
         )
 
     tex_parts.append(r"\end{document}" + "\n")
     out_tex.write_text("\n".join(tex_parts), encoding="utf-8")
-    print(f"Wrote {out_tex} from {len(md_files)} OCR markdown files.")
+    print(f"Wrote {out_tex} from {tex_dir}/*.tex")
 
 
 
@@ -1668,6 +1679,10 @@ REDUX_LAYOUT_TEX = r"""\usepackage{tocloft}
 """
 
 REDUX_OVERRIDES_TEX = r"""
+% --- Edition-specific macros (reflowed) ---
+\newcommand{\kbvcontinues}{\relax}    % paragraph cut by the original page break: keep going
+\newcommand{\kbvcontinued}{\relax}
+\newcommand{\kbvbooktitle}{}          % title already on the title page
 % Boxes stay unbreakable: tcolorbox's breakable mode leaks a colour under XeTeX and the
 % paragraph after a box is painted invisibly. Short boxes simply move to the next page.
 
@@ -1698,17 +1713,18 @@ _PROSE_RE = re.compile(r"^\\indent (.*)\\par$", re.DOTALL)
 _SENTENCE_END_RE = re.compile(r"[.?!:;।॥”\"\)\]]\s*$")
 
 
-def _merge_cross_page(prev_blocks: list[str], next_blocks: list[str]) -> None:
-    """Join a paragraph that the original printing split across two pages.
+def _mark_cross_page_join(prev_blocks: list[str], next_blocks: list[str]) -> None:
+    """Mark a paragraph that the original printing split across two pages.
 
-    The OCR is page-by-page, so a sentence cut by a page break became two paragraphs.
-    If the previous page ends with a plain paragraph (or list item) that has no sentence-final
-    punctuation and the next page starts with a plain paragraph, glue them back together.
+    The OCR is page-by-page, so a sentence cut by a page break became two paragraphs. When the
+    previous page ends with a plain paragraph (or list item) lacking sentence-final punctuation
+    and the next page starts with a plain paragraph, the first gets \\kbvcontinues instead of
+    \\par and the second starts with \\kbvcontinued instead of \\indent. The page-faithful
+    edition defines those as \\par / \\indent; the reflowed edition joins the two.
     """
     if not prev_blocks or not next_blocks:
         return
-    last = prev_blocks[-1]
-    first = next_blocks[0]
+    last, first = prev_blocks[-1], next_blocks[0]
     if "\\begin{" in last or not last.endswith("\\par"):
         return
     m_first = _PROSE_RE.match(first)
@@ -1717,15 +1733,80 @@ def _merge_cross_page(prev_blocks: list[str], next_blocks: list[str]) -> None:
     last_text = last[: -len("\\par")]
     if _SENTENCE_END_RE.search(last_text):
         return
-    prev_blocks[-1] = last_text.rstrip() + " " + m_first.group(1).strip() + "\\par"
-    next_blocks.pop(0)
+    prev_blocks[-1] = last_text.rstrip() + "\\kbvcontinues"
+    next_blocks[0] = "\\kbvcontinued " + m_first.group(1).strip() + "\\par"
 
 
-def build_redux_tex(ocr_dir: Path, out_tex: Path) -> None:
+BOOK_TITLE_BLOCK = (
+    r"\vspace{2pt plus 2pt}"
+    r"\begin{center}{\kbvchapfont\fontsize{20pt}{24pt}\selectfont ಕನ್ನಡ ಬಾಲ ವ್ಯಾಕರಣ}\end{center}"
+    r"\vspace{4pt plus 4pt minus 1pt}"
+)
+
+
+def export_page_tex(ocr_dir: Path, tex_dir: Path, force: bool = False) -> None:
+    """One-time conversion: write tex/NNNN.tex page bodies from ocr/NNNN.md.
+
+    After this, tex/*.tex is the source of truth and may be edited directly; ocr/*.md is only
+    the OCR archive. Refuses to overwrite an existing tex/ unless force is set.
+    """
+    existing = sorted(tex_dir.glob("*.tex")) if tex_dir.exists() else []
+    if existing and not force:
+        raise SystemExit(
+            f"{tex_dir} already has {len(existing)} page files; re-run with --force to overwrite your edits."
+        )
+    tex_dir.mkdir(exist_ok=True)
     md_files = sorted(ocr_dir.glob("*.md"))
     if not md_files:
         raise FileNotFoundError(f"No .md files found in {ocr_dir}")
 
+    special = {
+        1: render_cover_page,
+        3: render_special_page_3,
+        4: render_special_page_4,
+        5: render_special_page_5,
+        105: render_special_page_105,
+        116: render_back_cover_page,
+    }
+    prev_blocks: list[str] | None = None
+    prev_path: Path | None = None
+    written = 0
+
+    def flush() -> None:
+        nonlocal written
+        if prev_blocks is not None and prev_path is not None:
+            prev_path.write_text("\n\n".join(prev_blocks) + "\n", encoding="utf-8")
+            written += 1
+
+    for md_path in md_files:
+        file_num = int(md_path.stem)
+        out = tex_dir / f"{file_num:04d}.tex"
+        if file_num in special:
+            flush()
+            prev_blocks, prev_path = None, None
+            out.write_text(special[file_num](), encoding="utf-8")
+            written += 1
+            continue
+        md_text = md_path.read_text(encoding="utf-8").strip()
+        if not md_text:
+            flush()
+            prev_blocks, prev_path = None, None
+            if out.exists():
+                out.unlink()
+            continue
+        blocks = markdown_page_to_blocks(md_text, file_num)
+        if file_num == 7:
+            blocks = [BOOK_TITLE_BLOCK.replace(BOOK_TITLE_BLOCK, r"\kbvbooktitle") if b == BOOK_TITLE_BLOCK else b for b in blocks]
+        if prev_blocks is not None and 7 <= file_num <= 114:
+            _mark_cross_page_join(prev_blocks, blocks)
+        flush()
+        prev_blocks, prev_path = blocks, out
+    flush()
+    print(f"Wrote {written} page files to {tex_dir}/ from {ocr_dir}/*.md")
+
+
+def build_redux_tex(tex_dir: Path, out_tex: Path) -> None:
+    """Assemble the reflowed kbv-redux.tex from the per-page files in tex/."""
     parts: list[str] = [
         REDUX_PREAMBLE_HEAD_TEX
         + KBV_PACKAGES_TEX
@@ -1734,40 +1815,46 @@ def build_redux_tex(ocr_dir: Path, out_tex: Path) -> None:
         + KBV_DESIGN_MACROS_TEX
         + REDUX_OVERRIDES_TEX
         + "\\begin{document}\n",
-        "\\pagenumbering{roman}\n",
-        render_cover_page(),
-        render_special_page_3(),
-        render_special_page_4(),
-        "% === Table of contents (generated) ===\n\\tableofcontents\\thispagestyle{empty}\n\\cleardoublepage\n",
-        "\\pagenumbering{arabic}\n",
+        "\\pagenumbering{roman}",
+        f"\\input{{{tex_dir.name}/0001.tex}}",
+        f"\\input{{{tex_dir.name}/0003.tex}}",
+        f"\\input{{{tex_dir.name}/0004.tex}}",
+        "% === Table of contents (generated) ===\n\\tableofcontents\\thispagestyle{empty}\n\\cleardoublepage",
+        "\\pagenumbering{arabic}",
     ]
-
-    body_blocks: list[str] = []
-    for md_path in md_files:
-        file_num = int(md_path.stem)
-        if not 7 <= file_num <= 114:
-            continue  # cover, front matter and back cover are rendered separately
-        md_text = md_path.read_text(encoding="utf-8").strip()
-        if not md_text:
+    # Each page file normally ends a paragraph (\par, as the old blank line did). A file whose last
+    # block ends with \kbvcontinues is chained with % so it runs straight into the next file's
+    # \kbvcontinued paragraph.
+    body = []
+    for file_num in range(7, 115):
+        page_file = tex_dir / f"{file_num:04d}.tex"
+        if not page_file.exists():
             continue
-        if file_num == 105:
-            body_blocks.append(render_special_page_105())
+        content = page_file.read_text(encoding="utf-8").strip()
+        if not content:
             continue
-        blocks = markdown_page_to_blocks(md_text, file_num)
-        if file_num == 7:
-            blocks = [b for b in blocks if "ಕನ್ನಡ ಬಾಲ ವ್ಯಾಕರಣ}" not in b]  # title already on the title page
-        _merge_cross_page(body_blocks, blocks)
-        body_blocks.append(f"% --- from {md_path.name} ---")
-        body_blocks.extend(blocks)
-
-    parts.append("\n\n".join(body_blocks) + "\n")
-    parts.append("\\cleardoublepage\n" + render_back_cover_page())
+        joiner = "%" if content.endswith("\\kbvcontinues") else "\\par"
+        body.append(f"\\input{{{tex_dir.name}/{page_file.name}}}{joiner}")
+    parts.append("\n".join(body))
+    parts.append(f"\n\\cleardoublepage\n\\input{{{tex_dir.name}/0116.tex}}")
     parts.append("\\end{document}\n")
     out_tex.write_text("\n".join(parts), encoding="utf-8")
-    print(f"Wrote {out_tex} (reflowed edition) from {len(md_files)} OCR markdown files.")
+    print(f"Wrote {out_tex} (reflowed edition) from {tex_dir}/*.tex")
 
 
 if __name__ == "__main__":
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Assemble kbv.tex and kbv-redux.tex from the per-page tex/NNNN.tex files.")
+    ap.add_argument("--from-ocr", action="store_true", help="First regenerate tex/NNNN.tex from ocr/NNNN.md (one-time migration)")
+    ap.add_argument("--force", action="store_true", help="With --from-ocr: overwrite existing tex/ page files")
+    args = ap.parse_args()
+
     base = Path(__file__).resolve().parent
-    build_kbv_tex(base / "ocr", base / "kbv.tex")
-    build_redux_tex(base / "ocr", base / "kbv-redux.tex")
+    tex_dir = base / "tex"
+    if args.from_ocr:
+        export_page_tex(base / "ocr", tex_dir, force=args.force)
+    if not tex_dir.exists() or not any(tex_dir.glob("*.tex")):
+        raise SystemExit("tex/ has no page files. Run: python3 build_latex.py --from-ocr")
+    build_kbv_tex(tex_dir, base / "kbv.tex")
+    build_redux_tex(tex_dir, base / "kbv-redux.tex")

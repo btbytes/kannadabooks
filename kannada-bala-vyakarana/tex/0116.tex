@@ -1,0 +1,35 @@
+% === File 0116.md: Back Cover Page ===
+\thispagestyle{empty}
+\vspace*{2mm}
+\begin{center}
+\begin{tikzpicture}
+  % Main content node inside the framed box
+  \node[
+    inner xsep=6.5mm,
+    inner ysep=8mm,
+    text width=90mm,
+    align=justify
+  ] (box) {%
+    \begin{center}
+      {\Large\textbf{ಗಮನಿಸಿ :-}}
+    \end{center}
+    \vspace{4mm}
+    \setlength{\parindent}{1.8em}%
+    \setlength{\parskip}{4.5mm}%
+    \linespread{1.28}\selectfont
+    ಪ್ರಾಥಮಿಕ ಹಾಗೂ ಮಾಧ್ಯಮಿಕ ಶಾಲೆಯ ವಿದ್ಯಾರ್ಥಿಗಳಿಗೂ, ಪ್ರೌಢ ಶಾಲೆಯ ವಿದ್ಯಾರ್ಥಿಗಳಿಗೂ, ಕನ್ನಡವನ್ನು ತೃತೀಯ ಭಾಷೆಯಾಗಿ ತೆಗೆದುಕೊಂಡಿರುವ ವಿದ್ಯಾರ್ಥಿಗಳಿಗೂ, ಖಾಸಗಿಯಾಗಿ ಕನ್ನಡ ಕಲಿಯಲು ಬಯಸುವ ಕನ್ನಡೇತರರಿಗೂ, ವಯಸ್ಕರ ಶಾಲೆ ಸೇರಿ ಓದುಬರಹ ಕಲಿಯಬಯಸುವ ಹಿರಿಯರಿಗೂ ಉಪಯುಕ್ತವಾಗುವ ರೀತಿಯಲ್ಲಿ ಈ ವ್ಯಾಕರಣ ಶಾಸ್ತ್ರವನ್ನು ರಚಿಸಲಾಗಿದೆ.\par
+    ಪ್ರಾರಂಭಿಕ ಹಂತದಲ್ಲಿ ಕಲಿಯುವವರ ಮನಸ್ಸಿಗೆ ತೊಡಕು ಉಂಟಾಗಬಾರದು. ಈ ಉದ್ದೇಶದಿಂದ ಆಯಾಯ ಪ್ರಕರಣಗಳಿಗೆ ಸಂಬಂಧಪಟ್ಟ ಪಠ್ಯ ವಿಷಯಗಳನ್ನು ತಿಳಿಯಾಗಿ ವಿವರಿಸಲಾಗಿದೆ ಮತ್ತು ಅಧಿಕ ಸಂಖ್ಯೆಯಲ್ಲಿ ಅತ್ಯಂತ ಸಮಂಜಸವಾದ ಉದಾಹರಣೆಗಳನ್ನು ಕೊಡಲಾಗಿದೆ. ಆದುದರಿಂದ ಈ ಪುಸ್ತಕವು \textbf{5, 6, 7, 8, 9} ಮತ್ತು \textbf{10} ನೆಯ ತರಗತಿಯ ವಿದ್ಯಾರ್ಥಿಗಳಿಗೆ ಹೆಚ್ಚು ಉಪಯುಕ್ತವೆನ್ನಬಹುದು.\par
+    ವಿದ್ಯಾರ್ಥಿಗಳು ಆಯಾಯ ದರ್ಜೆಗೆ ಸೀಮಿತವಾದ ಪಠ್ಯಕ್ರಮಕ್ಕೆ ಅನುಸಾರವಾಗಿ ವಿಷಯವನ್ನು ಆರಿಸಿಕೊಂಡು ಅಭ್ಯಾಸ ಮಾಡಬೇಕಾದ್ದು ಅತಿಮುಖ್ಯ. ಅಭ್ಯಾಸ ಕಷ್ಟವೆನಿಸಿದಾಗ ಶಿಕ್ಷಕರ ನೆರವು ಪಡೆಯಲು ಹಿಂತೆಗೆಯಬಾರದು. ಆಸಕ್ತಿಯಿಂದ ಕಲಿಕೆ ಮುಂದುವರಿಸಿದಲ್ಲಿ ಕಷ್ಟ ಎನಿಸಿದ್ದು ಸುಲಭ ಸಾಧ್ಯವಾಗುವುದು.\par
+    \vspace{2mm}
+  };
+  % Draw letterpress-style border rules with slight corner gaps like full/0116.webp
+  \draw[line width=0.9pt] ([xshift=1.2mm]box.north west) -- ([xshift=-1.2mm]box.north east);
+  \draw[line width=0.9pt] ([xshift=1.2mm]box.south west) -- ([xshift=-1.2mm]box.south east);
+  \draw[line width=0.9pt] ([yshift=-1.2mm]box.north west) -- ([yshift=1.2mm]box.south west);
+  \draw[line width=0.9pt] ([yshift=-1.2mm]box.north east) -- ([yshift=1.2mm]box.south east);
+  % Bottom title and price aligned with box edges
+  \node[anchor=north west, inner sep=0pt] at ([yshift=-3.5mm]box.south west) {\large\textbf{ಕನ್ನಡ ಬಾಲ ವ್ಯಾಕರಣ}};
+  \node[anchor=north east, inner sep=0pt] at ([yshift=-3.5mm]box.south east) {\large\textbf{ರೂ. 10-00}};
+\end{tikzpicture}
+\end{center}
+\clearpage

@@ -1,0 +1,153 @@
+% === File 0001.md: Native TikZ Cover Page ===
+\thispagestyle{empty}
+\AddToShipoutPictureBG*{%
+  \AtPageLowerLeft{%
+    \begin{tikzpicture}
+      \useasboundingbox (0,0) rectangle (\paperwidth,\paperheight);
+      % Define exact cover palette from coverpage.png
+      \definecolor{kbvred}{HTML}{DF212B}
+      \definecolor{kbvdarkred}{HTML}{9E1319}
+      \definecolor{kbvcloudedge}{HTML}{B51921}
+      \definecolor{kbvtextred}{HTML}{98181D}
+      \definecolor{kbvoutline}{HTML}{2A0507}
+      \definecolor{kbvwavepink}{HTML}{EB605A}
+      \definecolor{kbvplumegrey}{HTML}{B8C2C4}
+      \definecolor{kbvplumedark}{HTML}{3D4345}
+
+      % 1. Full-bleed vermilion red background
+      \fill[kbvred] (0,0) rectangle (\paperwidth,\paperheight);
+
+      % 2. Darker crimson band & 3 sinusoidal wavy ribbons at bottom right (6.5 crests)
+      \begin{scope}
+        \clip (0.430\paperwidth, 0.0700\paperheight) rectangle (\paperwidth, 0.1524\paperheight);
+        \fill[kbvdarkred] (0.430\paperwidth, 0.0860\paperheight) rectangle (\paperwidth, 0.1365\paperheight);
+        % Top white wavy ribbon
+        \draw[white, line width=3.8pt, line cap=butt]
+          plot[domain=0.425:1.01, samples=220, smooth]
+          (\x*\paperwidth, {0.1348*\paperheight + 0.0062*\paperheight*cos((\x - 0.430)*11.4*360)});
+        % Middle coral-pink wavy ribbon
+        \draw[kbvwavepink, line width=3.8pt, line cap=butt]
+          plot[domain=0.425:1.01, samples=220, smooth]
+          (\x*\paperwidth, {0.1112*\paperheight + 0.0062*\paperheight*cos((\x - 0.430)*11.4*360)});
+        % Bottom white wavy ribbon
+        \draw[white, line width=3.8pt, line cap=butt]
+          plot[domain=0.425:1.01, samples=220, smooth]
+          (\x*\paperwidth, {0.0876*\paperheight + 0.0062*\paperheight*cos((\x - 0.430)*11.4*360)});
+      \end{scope}
+
+      % 3. Six horizontal white rules across the page width
+      \draw[white, line width=1.1pt] (0, 0.9440\paperheight) -- (\paperwidth, 0.9440\paperheight);
+      \draw[white, line width=1.0pt] (0, 0.7574\paperheight) -- (\paperwidth, 0.7574\paperheight);
+      \draw[white, line width=1.0pt] (0, 0.6151\paperheight) -- (\paperwidth, 0.6151\paperheight);
+      \draw[white, line width=1.0pt] (0, 0.4191\paperheight) -- (\paperwidth, 0.4191\paperheight);
+      \draw[white, line width=1.0pt] (0, 0.1524\paperheight) -- (\paperwidth, 0.1524\paperheight);
+      \draw[white, line width=1.0pt] (0, 0.0700\paperheight) -- (\paperwidth, 0.0700\paperheight);
+
+      % 4. Scalloped 11-lobed cloud badge on the right (matching coverpage.png lobe geometry)
+      \begin{scope}[shift={(0.750\paperwidth, 0.778\paperheight)}]
+        \def\cloudlobes{
+          -5.8/14.2/9.2, 5.8/14.2/9.2,
+          -14.2/9.2/9.2, 14.2/9.2/9.2,
+          -17.4/0.8/9.0, 17.4/0.8/9.0,
+          -15.2/-7.5/9.0, 15.2/-7.5/9.0,
+          -8.6/-13.2/8.6, 8.6/-13.2/8.6,
+          0.0/-15.2/8.4
+        }
+        % Layer 1: Outer dark-red border
+        \foreach \rx/\ry/\rad in \cloudlobes {
+          \fill[kbvcloudedge] (\rx mm, \ry mm) circle ({\rad mm + 1.35mm});
+        }
+        \fill[kbvcloudedge] (0,0) ellipse (19.5mm and 16.5mm);
+
+        % Layer 2: Outer white ring
+        \foreach \rx/\ry/\rad in \cloudlobes {
+          \fill[white] (\rx mm, \ry mm) circle ({\rad mm + 0.85mm});
+        }
+        \fill[white] (0,0) ellipse (19.0mm and 16.0mm);
+
+        % Layer 3: Inner red contour line
+        \foreach \rx/\ry/\rad in \cloudlobes {
+          \fill[kbvred] (\rx mm, \ry mm) circle ({\rad mm - 0.15mm});
+        }
+        \fill[kbvred] (0,0) ellipse (18.0mm and 15.0mm);
+
+        % Layer 4: Pure white cloud interior
+        \foreach \rx/\ry/\rad in \cloudlobes {
+          \fill[white] (\rx mm, \ry mm) circle ({\rad mm - 0.65mm});
+        }
+        \fill[white] (0,0) ellipse (17.5mm and 14.5mm);
+
+        % 6-line centered Kannada subtitle inside the cloud
+        \node[align=center, text=kbvtextred, font=\kbvcoversans\fontsize{12.2pt}{14.2pt}\selectfont] at (0, -0.2mm) {%
+          ಪ್ರಾಥಮಿಕ\\
+          ಶಾಲಾ ಮತ್ತು\\
+          ಪ್ರೌಢ ಶಾಲಾ\\
+          ತರಗತಿಗಳಿಗೆ\\
+          ಉಪಯುಕ್ತವಾದ\\
+          ಪಠ್ಯ ಪುಸ್ತಕ%
+        };
+      \end{scope}
+
+      % 5. Outlined giant 3-line display title: ಕನ್ನಡ / ಬಾಲ / ವ್ಯಾಕರಣ
+      \foreach \ang in {0,15,...,345} {
+        \node[anchor=west, text=kbvoutline] at ([shift={(\ang:1.6pt)}]0.052\paperwidth, 0.840\paperheight)
+          {\kbvdisplayfont\fontsize{64pt}{64pt}\selectfont ಕನ್ನಡ};
+      }
+      \node[anchor=west, text=white] at (0.052\paperwidth, 0.840\paperheight)
+        {\kbvdisplayfont\fontsize{64pt}{64pt}\selectfont ಕನ್ನಡ};
+
+      \foreach \ang in {0,15,...,345} {
+        \node[anchor=west, text=kbvoutline] at ([shift={(\ang:1.6pt)}]0.052\paperwidth, 0.684\paperheight)
+          {\kbvdisplayfont\fontsize{65pt}{65pt}\selectfont ಬಾಲ};
+      }
+      \node[anchor=west, text=white] at (0.052\paperwidth, 0.684\paperheight)
+        {\kbvdisplayfont\fontsize{65pt}{65pt}\selectfont ಬಾಲ};
+
+      \foreach \ang in {0,15,...,345} {
+        \node[anchor=west, text=kbvoutline] at ([shift={(\ang:1.6pt)}]0.052\paperwidth, 0.512\paperheight)
+          {\kbvdisplayfont\fontsize{63pt}{63pt}\selectfont ವ್ಯಾಕರಣ};
+      }
+      \node[anchor=west, text=white] at (0.052\paperwidth, 0.512\paperheight)
+        {\kbvdisplayfont\fontsize{63pt}{63pt}\selectfont ವ್ಯಾಕರಣ};
+
+      % 6. Author name on the right
+      \node[anchor=east, text=white, font=\kbvcoversans\fontsize{15pt}{17pt}\selectfont]
+        at (0.945\paperwidth, 0.286\paperheight) {ಕೆ. ಆರ್. ಕೆ. ಮೂರ್ತಿ};
+
+      % 7. Publisher Emblem (Vahini Prakashana stylized peacock in framed box)
+      \begin{scope}[shift={(0.106\paperwidth, 0.201\paperheight)}]
+        \fill[kbvdarkred, draw=white, line width=0.65pt] (-4.3mm, -6.6mm) rectangle (4.3mm, 6.6mm);
+        \fill[kbvplumegrey, draw=kbvplumedark, line width=0.35pt] (0.55mm, 0.35mm) circle (2.65mm);
+        \foreach \a in {0,18,...,342} {
+          \draw[kbvplumedark, line width=0.22pt] (0.55mm, 0.35mm) ++(\a:1.15mm) -- ++(\a:1.5mm);
+        }
+        \fill[kbvdarkred, draw=kbvplumedark, line width=0.35pt] (0.55mm, 0.35mm) circle (1.15mm);
+        \fill[kbvplumegrey, draw=kbvplumedark, line width=0.3pt]
+          (-0.5mm, 2.7mm) .. controls (1.2mm, 3.0mm) and (2.2mm, 2.5mm) .. (2.6mm, 1.8mm)
+          .. controls (1.2mm, 1.2mm) and (-0.8mm, 0.6mm) .. (-1.2mm, -1.2mm)
+          .. controls (-1.6mm, 0.5mm) and (-1.4mm, 2.0mm) .. cycle;
+        \fill[white, draw=kbvplumedark, line width=0.35pt]
+          (0.1mm, 3.4mm)
+          .. controls (-2.4mm, 3.3mm) and (-3.5mm, 1.2mm) .. (-3.3mm, -1.0mm)
+          .. controls (-3.1mm, -2.8mm) and (-1.2mm, -3.8mm) .. (0.3mm, -4.8mm)
+          .. controls (0.5mm, -5.4mm) and (0.4mm, -6.0mm) .. (0.3mm, -6.1mm)
+          .. controls (1.2mm, -5.0mm) and (1.4mm, -3.4mm) .. (0.7mm, -2.2mm)
+          .. controls (-0.8mm, -1.5mm) and (-1.6mm, -0.2mm) .. (-1.5mm, 1.2mm)
+          .. controls (-1.4mm, 2.1mm) and (-0.2mm, 2.3mm) .. (0.6mm, 2.6mm)
+          .. controls (0.8mm, 3.0mm) and (0.6mm, 3.4mm) .. cycle;
+        \fill[kbvplumedark] (-0.25mm, 2.85mm) ellipse (0.45mm and 0.28mm);
+        \fill[white] (-0.25mm, 2.85mm) circle (0.14mm);
+        \foreach \ca in {55, 75, 95, 115, 135} {
+          \draw[white, line width=0.35pt] (-0.1mm, 3.5mm) -- ++(\ca:1.3mm);
+          \fill[white] (-0.1mm, 3.5mm) ++(\ca:1.3mm) circle (0.22mm);
+        }
+      \end{scope}
+
+      % 8. Publisher Name at bottom left (between Rule 5 and Rule 6)
+      \node[anchor=west, text=white, font=\kbvcoversans\fontsize{14pt}{16pt}\selectfont]
+        at (0.066\paperwidth, 0.111\paperheight) {ವಾಹಿನಿ ಪ್ರಕಾಶನ};
+    \end{tikzpicture}%
+  }%
+}
+\mbox{}
+\clearpage

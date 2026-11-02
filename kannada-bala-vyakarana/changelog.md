@@ -17,3 +17,7 @@
 - Page-faithful `kbv.tex`: body set at 10pt/13pt with 9.5mm side margins and a tighter paragraph gap so the wider Tiro Kannada fits; still 116 pages with the original page mapping, and the number of auto-shrunk pages dropped from 89 to 73.
 - Printed page 103 (ಷಟ್ಪದಿಗಳ ಲಕ್ಷಣಗಳು): replaced the rotated, shrunken table with an upright four-column table across the full text width in both editions; it now fills the page at near full size.
 - Removed the light grey panels behind □ rule lines, ವ್ಯಾಖ್ಯೆ/ಸೂತ್ರ blocks, derivation blocks and table zebra rows; all backgrounds are now white.
+- ಛಂದಸ್ಸು chapter and later pages: laghu marks (U, ∪, OCR garble) are typeset as \smile and guru marks (dashes, underscores) as a macron, in prose, prastara lines, the gana table and the ಷಟ್ಪದಿ table.
+- Laghu mark changed from \smile to a deep U (\cup scaled to 0.85) so it matches the macron guru mark in height and weight.
+- `make` with no target now prints the help; the old default build moved to `make book`.
+- Source of truth moved from `ocr/*.md` to per-page `tex/NNNN.tex` files (113 files, exported once with `python3 build_latex.py --from-ocr`). `build_latex.py` now only assembles `kbv.tex` and `kbv-redux.tex` by `\input`-ing those files, so pages can be edited directly in TeX. Paragraphs cut by the original page breaks are marked with `\kbvcontinues`/`\kbvcontinued`, which the page-faithful edition ends and the reflowed edition joins. Makefile: `make tex` assembles, `make tex-from-ocr` re-exports (overwrites edits); PDFs depend on `tex/*.tex`.
